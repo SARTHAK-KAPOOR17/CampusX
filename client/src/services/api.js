@@ -1,13 +1,13 @@
 // client/src/services/api.js
 import axios from 'axios';
 
-// Base API URL from Vite environment variable (defaults to localhost:5000)
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const AI_SERVICE_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -21,10 +21,87 @@ export const aiClient = axios.create({
   },
 });
 
-// Response interceptor to unwrap standard response envelope
+let authHandlers = {
+  getAccessToken: () => null,
+  onRefreshSuccess: () => {},
+  onRefreshFailure: () => {},
+};
+
+export const configureAuthHandlers = (handlers) => {
+  authHandlers = { ...authHandlers, ...handlers };
+};
+
+let activeRefreshPromise = null;
+
+/**
+ * Deduplicated silent refresh call (prevents concurrent rotation collisions).
+ */
+export const performRefresh = async () => {
+  if (!activeRefreshPromise) {
+    activeRefreshPromise = apiClient
+      .post('/api/auth/refresh')
+      .then((res) => {
+        const payload = res?.data;
+        if (payload?.accessToken && payload?.user) {
+          authHandlers.onRefreshSuccess(payload);
+          return payload;
+        }
+        throw new Error('Invalid refresh response');
+      })
+      .finally(() => {
+        activeRefreshPromise = null;
+      });
+  }
+  return activeRefreshPromise;
+};
+
+// Attach in-memory access token to outgoing requests
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = authHandlers.getAccessToken();
+    if (token && !config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+const AUTH_SKIP_RETRY_PATHS = [
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/refresh',
+  '/api/auth/logout',
+];
+
+// Response interceptor: unwrap standard response envelope & handle 401 token refresh once
 apiClient.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    const status = error.response?.status;
+    const requestUrl = originalRequest?.url || '';
+
+    const shouldSkipRetry = AUTH_SKIP_RETRY_PATHS.some((path) => requestUrl.includes(path));
+
+    if (status === 401 && originalRequest && !originalRequest._retry && !shouldSkipRetry) {
+      originalRequest._retry = true;
+      try {
+        const refreshed = await performRefresh();
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${refreshed.accessToken}`;
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        authHandlers.onRefreshFailure();
+        const customRefreshErr = {
+          message: refreshError?.message || 'Session expired. Please log in again.',
+          statusCode: refreshError?.statusCode || 401,
+          details: refreshError?.details || null,
+        };
+        return Promise.reject(customRefreshErr);
+      }
+    }
+
     const customError = {
       message: error.response?.data?.message || error.message || 'Network request failed',
       statusCode: error.response?.status || 500,
@@ -36,3 +113,11 @@ apiClient.interceptors.response.use(
 
 export const checkServerHealth = () => apiClient.get('/api/health');
 export const checkAiHealth = () => aiClient.get('/health');
+export const authApi = {
+  signup: (data) => apiClient.post('/api/auth/signup', data),
+  login: (data) => apiClient.post('/api/auth/login', data),
+  refresh: () => performRefresh(),
+  logout: () => apiClient.post('/api/auth/logout'),
+  logoutAll: () => apiClient.post('/api/auth/logout-all'),
+  me: () => apiClient.get('/api/auth/me'),
+};
