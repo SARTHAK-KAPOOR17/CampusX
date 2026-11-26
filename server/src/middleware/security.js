@@ -39,11 +39,11 @@ const xssProtectionMiddleware = (req, res, next) => {
 };
 
 /**
- * Configure rate limiter
+ * General API rate limiter
  */
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.max,
+  max: config.env === 'test' ? 1000 : config.rateLimit.max,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -52,11 +52,27 @@ const limiter = rateLimit({
 });
 
 /**
+ * Stricter rate limiter for sensitive auth endpoints (/signup, /login, /refresh)
+ */
+const authLimiter = rateLimit({
+  windowMs: config.rateLimit.authWindowMs,
+  max: config.env === 'test' ? 1000 : config.rateLimit.authMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    return errorResponse(
+      res,
+      'Too many authentication attempts from this IP, please try again later.',
+      429
+    );
+  },
+});
+
+/**
  * CORS options with dynamic whitelist verification
  */
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
     if (config.corsOrigins.includes(origin) || config.corsOrigins.includes('*')) {
       return callback(null, true);
@@ -92,5 +108,6 @@ const setupSecurityMiddleware = (app) => {
 module.exports = {
   setupSecurityMiddleware,
   limiter,
+  authLimiter,
   xssProtectionMiddleware,
 };
