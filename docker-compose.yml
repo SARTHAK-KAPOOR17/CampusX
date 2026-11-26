@@ -58,6 +58,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       EMAIL_FROM: ${EMAIL_FROM:-CampusX <noreply@campusx.edu>}
+      LISTING_EXPIRY_DAYS: ${LISTING_EXPIRY_DAYS:-60}
+      ENABLE_CRON: ${ENABLE_CRON:-true}
     ports:
       - "5000:5000"
     volumes:
