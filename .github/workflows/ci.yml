@@ -38,7 +38,7 @@ jobs:
       JWT_ACCESS_SECRET: campusx-ci-test-access-secret
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_DAYS: 7
-      BCRYPT_ROUNDS: 4
+      BCRYPT_ROUNDS: 12
       ADMIN_NAME: CampusX Admin
       ADMIN_EMAIL: admin@campusx.edu
       ADMIN_PASSWORD: Admin@CampusX2026!
