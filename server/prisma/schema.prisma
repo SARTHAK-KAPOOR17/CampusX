@@ -15,6 +15,23 @@ enum Role {
   ADMIN
 }
 
+enum Condition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  USED
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  RESERVED
+  SOLD
+  EXPIRED
+  UNDER_REVIEW
+}
+
 model User {
   id                String         @id @default(uuid())
   name              String
@@ -36,6 +53,7 @@ model User {
   updatedAt         DateTime       @updatedAt
   refreshTokens     RefreshToken[]
   emailOtps         EmailOtp[]
+  products          Product[]
 
   @@map("users")
 }
@@ -69,4 +87,44 @@ model EmailOtp {
   @@index([userId])
   @@index([collegeEmail])
   @@map("email_otps")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id           String        @id @default(uuid())
+  sellerId     String
+  seller       User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  categoryId   String?
+  category     Category?     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  title        String        @db.VarChar(120)
+  description  String?       @db.VarChar(2000)
+  price        Decimal?      @db.Decimal(10, 2)
+  condition    Condition?
+  status       ListingStatus @default(DRAFT)
+  isNegotiable Boolean       @default(true)
+  viewCount    Int           @default(0)
+  tags         String[]      @default([])
+  publishedAt  DateTime?
+  expiresAt    DateTime?
+  soldAt       DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([sellerId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([price])
+  @@index([createdAt])
+  @@map("products")
 }
