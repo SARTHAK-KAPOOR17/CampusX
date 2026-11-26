@@ -88,8 +88,12 @@ const corsOptions = {
  * Apply all security middleware to the Express app
  */
 const setupSecurityMiddleware = (app) => {
-  // 1. Helmet headers
-  app.use(helmet());
+  // 1. Helmet headers (allow cross-origin static avatar loading from client origin)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    })
+  );
 
   // 2. CORS configuration
   app.use(cors(corsOptions));
