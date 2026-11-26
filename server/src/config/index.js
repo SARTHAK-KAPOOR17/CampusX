@@ -30,6 +30,23 @@ const config = {
     refreshExpiresDays: parseInt(process.env.JWT_REFRESH_EXPIRES_DAYS || '7', 10),
   },
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12', 10),
+  verification: {
+    allowedDomains: (
+      process.env.ALLOWED_COLLEGE_DOMAINS ||
+      'campusx.edu,university.edu,mit.edu,stanford.edu,iitd.ac.in'
+    )
+      .split(',')
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean),
+    otpExpiryMinutes: parseInt(process.env.OTP_EXPIRY_MINUTES || '10', 10),
+  },
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.EMAIL_FROM || 'CampusX <noreply@campusx.edu>',
+  },
 };
 
 module.exports = config;
