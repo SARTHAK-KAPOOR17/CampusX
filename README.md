@@ -24,8 +24,8 @@
 |:---:|:---|:---:|:---|
 | **Day 1** | **Project Foundation & Architecture** | ✅ Done | Monorepo layout, Express modular monolith, Prisma + PostgreSQL, React + Vite + Tailwind frontend, FastAPI AI skeleton, Docker containerization, GitHub Actions CI, and `/health` endpoints. |
 | **Day 2** | **Authentication & Role-Based Access Control** | ✅ Done | JWT access tokens (15m), opaque refresh tokens (SHA-256 hashed, 7d) in httpOnly cookie with rotation + reuse detection, bcrypt (12 rounds), RBAC (`STUDENT`, `MODERATOR`, `ADMIN`), admin role management, seed script, Zustand in-memory auth store & Axios refresh interceptor. |
-| **Day 3** | **Student Verification & User Profiles** | 🚧 In Progress | College email domain whitelist + 6-digit SHA-256 OTP verification (`Nodemailer` / dev console), `requireVerifiedStudent` middleware, profile CRUD with bio XSS sanitization, avatar upload (`multer` + magic-byte validation), public profile endpoint, verified badge UI. |
-| **Day 4** | **Marketplace Listings Schema & CRUD** | ⏳ Planned | Listing models (Textbooks, Electronics, Dorm Gear, Housing/Subleases), status transitions (Active, Reserved, Sold), pagination & sorting. |
+| **Day 3** | **Student Verification & User Profiles** | ✅ Done | College email domain whitelist + 6-digit SHA-256 OTP verification (`Nodemailer` / dev console), `requireVerifiedStudent` middleware, profile CRUD with bio XSS sanitization, avatar upload (`multer` + magic-byte validation), public profile endpoint, verified badge UI. |
+| **Day 4** | **Marketplace Core: Listings, Categories, Conditions & Lifecycle** | 🚧 In Progress | `Category` & `Product` Prisma models + idempotent category seed, Draft/Publish workflow (`requireVerifiedStudent`), central lifecycle state machine (`DRAFT`, `ACTIVE`, `RESERVED`, `SOLD`, `EXPIRED`, `UNDER_REVIEW`), soft-delete, view counting, moderator review hook, hourly expiry cron (`node-cron`), and Marketplace/Sell/Detail/My Listings UI. |
 | **Day 5** | **Campus Search & Filtering Engine** | ⏳ Planned | Full-text indexing, campus filtering, category filters, price range sliders, condition filters. |
 | **Day 6** | **Media Storage & Image Pipeline** | ⏳ Planned | S3-compatible cloud storage, multi-image uploads, thumbnail generation, file validation, CDN delivery. |
 | **Day 7** | **AI Service: Auto-Categorization & Tagging** | ⏳ Planned | FastAPI text processing, zero-shot/embedding-based category prediction, auto-tagging of item condition and academic course codes. |
@@ -238,6 +238,48 @@ Profile endpoints are mounted under `/api/users`. Avatars are stored locally in 
 | `PATCH` | `/api/users/me/profile` | Bearer JWT | Update `name`, `course`, `branch`, `year` (1–6), and `bio` (max 300 chars, XSS-sanitized). |
 | `POST` | `/api/users/me/avatar` | Bearer JWT | Upload avatar (`multipart/form-data`, field `avatar`, max 2MB, JPEG/PNG/WebP verified by magic bytes); replaces & deletes previous avatar. |
 | `GET` | `/api/users/:id` | Public | Fetch sanitized public profile (`id`, `name`, `profilePictureUrl`, `course`, `branch`, `year`, `bio`, `ratingAverage`, `ratingCount`, `isVerifiedStudent`). Never exposes `email`, `collegeEmail`, `role`, or `passwordHash`. |
+
+---
+
+## 🛒 Marketplace API
+
+Categories and product listings are mounted under `/api/categories`, `/api/products`, and `/api/admin/products`. Soft-deleted listings (`deletedAt != null`) are excluded from all queries.
+
+| Method | Endpoint | Access | Description |
+|:---:|:---|:---|:---|
+| `GET` | `/api/categories` | Public | List all seeded marketplace categories sorted alphabetically by `name`. |
+| `GET` | `/api/products` | Public | Paginated feed (`?page=1&limit=12&categoryId=`) of `ACTIVE` and `RESERVED` listings sorted newest first, including seller public info. |
+| `GET` | `/api/products/mine` | Bearer JWT | List the authenticated seller's own listings with optional `?status=` filter. |
+| `GET` | `/api/products/:id` | Public / Optional Auth | View listing details (`DRAFT`, `UNDER_REVIEW`, `EXPIRED` visible only to owner, `ADMIN`, `MODERATOR`). Increments `viewCount` for non-owners. |
+| `POST` | `/api/products` | Bearer JWT + Verified Student | Create a listing (`saveAsDraft: true` requires only `title`; publishing requires `title`, `description`, `price`, `categoryId`, `condition` and sets `expiresAt = now + LISTING_EXPIRY_DAYS`). |
+| `PATCH` | `/api/products/:id` | Owner only | Edit listing fields (allowed only in `DRAFT`, `ACTIVE`, or `RESERVED`). |
+| `POST` | `/api/products/:id/publish` | Owner only | Publish a `DRAFT` listing (`DRAFT -> ACTIVE`), setting `publishedAt` and `expiresAt`. |
+| `POST` | `/api/products/:id/status` | Owner only | Transition seller listing status (`ACTIVE <-> RESERVED`, `ACTIVE/RESERVED -> SOLD`, `EXPIRED -> ACTIVE` relist). |
+| `DELETE` | `/api/products/:id` | Owner or `ADMIN` | Hard delete for `DRAFT` listings; soft delete (`deletedAt`) for all other statuses. |
+| `PATCH` | `/api/admin/products/:id/status` | `ADMIN`, `MODERATOR` | Moderation transition (`ACTIVE/RESERVED -> UNDER_REVIEW` or `UNDER_REVIEW -> ACTIVE`). |
+
+---
+
+## 🔄 Listing Lifecycle
+
+Allowed listing status transitions enforced centrally in the product service (plus automated hourly expiry via `node-cron`):
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT: Create (saveAsDraft = true)
+    [*] --> ACTIVE: Create (saveAsDraft = false)
+    DRAFT --> ACTIVE: POST /publish (Seller)
+    ACTIVE --> RESERVED: Seller marks reserved
+    RESERVED --> ACTIVE: Seller unreserves
+    ACTIVE --> SOLD: Seller marks sold
+    RESERVED --> SOLD: Seller marks sold
+    ACTIVE --> EXPIRED: Expiry cron job (past expiresAt)
+    EXPIRED --> ACTIVE: Seller relists (resets expiresAt)
+    ACTIVE --> UNDER_REVIEW: Admin / Moderator flags
+    RESERVED --> UNDER_REVIEW: Admin / Moderator flags
+    UNDER_REVIEW --> ACTIVE: Admin / Moderator approves
+    SOLD --> [*]
+```
 
 ---
 
