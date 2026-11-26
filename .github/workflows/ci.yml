@@ -42,6 +42,13 @@ jobs:
       ADMIN_NAME: CampusX Admin
       ADMIN_EMAIL: admin@campusx.edu
       ADMIN_PASSWORD: Admin@CampusX2026!
+      ALLOWED_COLLEGE_DOMAINS: campusx.edu,university.edu,mit.edu,stanford.edu,iitd.ac.in
+      OTP_EXPIRY_MINUTES: 10
+      SMTP_HOST: ''
+      SMTP_PORT: 587
+      SMTP_USER: ''
+      SMTP_PASS: ''
+      EMAIL_FROM: CampusX <noreply@campusx.edu>
 
     steps:
       - name: Checkout Repository

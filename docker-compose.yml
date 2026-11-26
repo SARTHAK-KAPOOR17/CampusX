@@ -51,8 +51,17 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-CampusX Admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@campusx.edu}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@CampusX2026!}
+      ALLOWED_COLLEGE_DOMAINS: ${ALLOWED_COLLEGE_DOMAINS:-campusx.edu,university.edu,mit.edu,stanford.edu,iitd.ac.in}
+      OTP_EXPIRY_MINUTES: ${OTP_EXPIRY_MINUTES:-10}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-CampusX <noreply@campusx.edu>}
     ports:
       - "5000:5000"
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,6 +127,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  uploads_data:
     driver: local
 
 networks:

@@ -34,6 +34,10 @@ const authenticate = asyncHandler(async (req, res, next) => {
       email: true,
       role: true,
       isActive: true,
+      collegeEmail: true,
+      isVerifiedStudent: true,
+      verifiedAt: true,
+      profilePictureUrl: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -69,7 +73,28 @@ const authorize = (...roles) => {
   };
 };
 
+/**
+ * Ensures the authenticated user has completed university student verification.
+ */
+const requireVerifiedStudent = (req, res, next) => {
+  if (!req.user) {
+    return next(new AppError('Authentication required.', 401));
+  }
+
+  if (!req.user.isVerifiedStudent) {
+    return next(
+      new AppError(
+        'Verified student status is required to perform this action. Please verify your college email.',
+        403
+      )
+    );
+  }
+
+  return next();
+};
+
 module.exports = {
   authenticate,
   authorize,
+  requireVerifiedStudent,
 };

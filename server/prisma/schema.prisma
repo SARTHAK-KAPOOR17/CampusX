@@ -16,15 +16,26 @@ enum Role {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  name          String
-  email         String         @unique
-  passwordHash  String
-  role          Role           @default(STUDENT)
-  isActive      Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  refreshTokens RefreshToken[]
+  id                String         @id @default(uuid())
+  name              String
+  email             String         @unique
+  passwordHash      String
+  role              Role           @default(STUDENT)
+  isActive          Boolean        @default(true)
+  collegeEmail      String?        @unique
+  isVerifiedStudent Boolean        @default(false)
+  verifiedAt        DateTime?
+  profilePictureUrl String?
+  course            String?
+  branch            String?
+  year              Int?
+  bio               String?        @db.VarChar(300)
+  ratingAverage     Float          @default(0)
+  ratingCount       Int            @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  refreshTokens     RefreshToken[]
+  emailOtps         EmailOtp[]
 
   @@map("users")
 }
@@ -42,4 +53,20 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model EmailOtp {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collegeEmail String
+  otpHash      String
+  expiresAt    DateTime
+  attempts     Int       @default(0)
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@index([collegeEmail])
+  @@map("email_otps")
 }

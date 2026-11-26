@@ -1,4 +1,5 @@
 // server/src/app.js
+const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { setupSecurityMiddleware } = require('./middleware/security');
@@ -7,6 +8,8 @@ const { errorResponse } = require('./utils/response');
 const healthRoutes = require('./modules/health/health.routes');
 const authRoutes = require('./modules/auth/auth.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
+const verificationRoutes = require('./modules/verification/verification.routes');
+const userRoutes = require('./modules/users/users.routes');
 
 const app = express();
 
@@ -16,11 +19,16 @@ setupSecurityMiddleware(app);
 // Parse HTTP-only cookies for refresh token flows
 app.use(cookieParser());
 
+// Serve uploaded avatars statically (TODO: Day 5 will migrate to cloud storage)
+app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
+
 // Mount routes
 app.use('/api/health', healthRoutes);
 app.use('/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/verification', verificationRoutes);
+app.use('/api/users', userRoutes);
 
 // Root route
 app.get('/', (req, res) => {

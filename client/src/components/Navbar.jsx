@@ -1,8 +1,9 @@
 // client/src/components/Navbar.jsx
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShieldCheck, LogOut, LogIn, UserPlus, LayoutDashboard } from 'lucide-react';
+import { ShieldCheck, LogOut, LogIn, UserPlus, LayoutDashboard, UserCircle } from 'lucide-react';
 import { useAuthStore } from '../store';
+import { VerifiedBadge } from './VerifiedBadge';
 
 export const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuthStore();
@@ -24,14 +25,14 @@ export const Navbar = () => {
             <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
               CampusX
             </span>
-            <span className="hidden sm:inline-block ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              Day 2 Auth + RBAC
+            <span className="hidden lg:inline-block ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              Day 3 Verification + Profiles
             </span>
           </div>
         </Link>
 
-        <div className="flex items-center space-x-3">
-          <div className="hidden md:flex items-center space-x-1 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/50">
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="hidden xl:flex items-center space-x-1 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/50">
             <ShieldCheck className="w-4 h-4 text-emerald-400 mr-1" />
             <span>MERN + Postgres + Prisma</span>
           </div>
@@ -43,9 +44,17 @@ export const Navbar = () => {
                 className="text-xs sm:text-sm text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5"
               >
                 <LayoutDashboard className="w-4 h-4 text-blue-400" />
-                <span>Dashboard</span>
+                <span className="hidden sm:inline">Dashboard</span>
               </Link>
-              <span className="hidden sm:inline-block text-xs font-mono px-2.5 py-1 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+              <Link
+                to="/profile"
+                className="text-xs sm:text-sm text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5"
+              >
+                <UserCircle className="w-4 h-4 text-indigo-400" />
+                <span className="hidden sm:inline">Profile</span>
+              </Link>
+              {user?.isVerifiedStudent && <VerifiedBadge compact className="hidden md:inline-flex" />}
+              <span className="hidden lg:inline-block text-xs font-mono px-2.5 py-1 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
                 {user?.name} ({user?.role})
               </span>
               <button
@@ -53,7 +62,7 @@ export const Navbar = () => {
                 className="text-xs sm:text-sm text-rose-300 hover:text-white bg-rose-500/10 hover:bg-rose-600 px-3 py-1.5 rounded-lg border border-rose-500/30 transition flex items-center gap-1.5"
               >
                 <LogOut className="w-4 h-4" />
-                <span>Logout</span>
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </>
           ) : (

@@ -8,6 +8,9 @@ import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { VerificationPage } from './pages/VerificationPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { PublicProfilePage } from './pages/PublicProfilePage';
 import { useAuthStore } from './store';
 
 function App() {
@@ -28,11 +31,28 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
+              <Route path="/users/:id" element={<PublicProfilePage />} />
               <Route
                 path="/dashboard"
                 element={
                   <ProtectedRoute>
                     <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/verify"
+                element={
+                  <ProtectedRoute>
+                    <VerificationPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <ProfilePage />
                   </ProtectedRoute>
                 }
               />

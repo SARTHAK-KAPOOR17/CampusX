@@ -35,6 +35,14 @@ const errorHandler = (err, req, res, next) => {
     return errorResponse(res, err.message, 403);
   }
 
+  // Multer upload limits / file errors
+  if (err.name === 'MulterError') {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return errorResponse(res, 'File size exceeds the 2MB maximum limit.', 400);
+    }
+    return errorResponse(res, err.message || 'File upload failed.', 400);
+  }
+
   // JSON parsing error / syntax error
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     return errorResponse(res, 'Malformed JSON payload in request body.', 400);
