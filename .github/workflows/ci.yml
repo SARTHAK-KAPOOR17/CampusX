@@ -11,11 +11,37 @@ on:
 
 jobs:
   # ========================================================
-  # Server CI: Install, Lint, Build & Jest Unit Tests
+  # Server CI: Install, Lint, Build, Migrate & Jest Tests
   # ========================================================
   server-ci:
     name: Server (Node.js + Express + Prisma)
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: campusx_user
+          POSTGRES_PASSWORD: campusx_password
+          POSTGRES_DB: campusx_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://campusx_user:campusx_password@localhost:5432/campusx_db?schema=public
+      JWT_ACCESS_SECRET: campusx-ci-test-access-secret
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_DAYS: 7
+      BCRYPT_ROUNDS: 4
+      ADMIN_NAME: CampusX Admin
+      ADMIN_EMAIL: admin@campusx.edu
+      ADMIN_PASSWORD: Admin@CampusX2026!
 
     steps:
       - name: Checkout Repository
@@ -26,12 +52,12 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: server/package.json
+          cache-dependency-path: server/package-lock.json
 
       - name: Install Server Dependencies
         run: |
           cd server
-          npm install
+          npm ci
 
       - name: Run Server Lint Check
         run: |
@@ -43,7 +69,12 @@ jobs:
           cd server
           npm run build
 
-      - name: Run Server Unit & Health Integration Tests
+      - name: Apply Prisma Migrations
+        run: |
+          cd server
+          npx prisma migrate deploy
+
+      - name: Run Server Unit & Integration Tests
         run: |
           cd server
           npm test
@@ -64,12 +95,12 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: client/package.json
+          cache-dependency-path: client/package-lock.json
 
       - name: Install Client Dependencies
         run: |
           cd client
-          npm install
+          npm ci
 
       - name: Run Client Lint Check
         run: |
