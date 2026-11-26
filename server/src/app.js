@@ -10,6 +10,8 @@ const authRoutes = require('./modules/auth/auth.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const verificationRoutes = require('./modules/verification/verification.routes');
 const userRoutes = require('./modules/users/users.routes');
+const categoryRoutes = require('./modules/categories/categories.routes');
+const productRoutes = require('./modules/products/products.routes');
 
 const app = express();
 
@@ -29,6 +31,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/products', productRoutes);
 
 // Root route
 app.get('/', (req, res) => {

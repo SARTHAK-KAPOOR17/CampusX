@@ -49,6 +49,8 @@ jobs:
       SMTP_USER: ''
       SMTP_PASS: ''
       EMAIL_FROM: CampusX <noreply@campusx.edu>
+      LISTING_EXPIRY_DAYS: 60
+      ENABLE_CRON: 'false'
 
     steps:
       - name: Checkout Repository

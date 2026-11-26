@@ -145,3 +145,18 @@ export const usersApi = {
     }),
   getPublicProfile: (id) => apiClient.get(`/api/users/${id}`),
 };
+
+export const categoriesApi = {
+  list: () => apiClient.get('/api/categories'),
+};
+
+export const productsApi = {
+  list: (params = {}) => apiClient.get('/api/products', { params }),
+  mine: (params = {}) => apiClient.get('/api/products/mine', { params }),
+  getById: (id) => apiClient.get(`/api/products/${id}`),
+  create: (data) => apiClient.post('/api/products', data),
+  update: (id, data) => apiClient.patch(`/api/products/${id}`, data),
+  publish: (id) => apiClient.post(`/api/products/${id}/publish`),
+  updateStatus: (id, status) => apiClient.post(`/api/products/${id}/status`, { status }),
+  remove: (id) => apiClient.delete(`/api/products/${id}`),
+};

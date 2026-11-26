@@ -47,6 +47,12 @@ const config = {
     pass: process.env.SMTP_PASS || '',
     from: process.env.EMAIL_FROM || 'CampusX <noreply@campusx.edu>',
   },
+  listings: {
+    expiryDays: parseInt(process.env.LISTING_EXPIRY_DAYS || '60', 10),
+  },
+  cron: {
+    enabled: process.env.ENABLE_CRON !== 'false' && process.env.NODE_ENV !== 'test',
+  },
 };
 
 module.exports = config;

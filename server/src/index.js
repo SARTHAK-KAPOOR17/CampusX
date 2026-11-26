@@ -3,6 +3,7 @@ const app = require('./app');
 const config = require('./config');
 const logger = require('./utils/logger');
 const { prisma, checkDbConnection } = require('./config/db');
+const { startExpiryCron } = require('./jobs/expireListings');
 
 const PORT = config.port;
 
@@ -16,6 +17,8 @@ const startServer = async () => {
       logger.warn({ error: dbStatus.error }, 'PostgreSQL connection unavailable at boot; running in offline/degraded mode');
     }
 
+    const expiryCronTask = startExpiryCron();
+
     const server = app.listen(PORT, () => {
       logger.info(`CampusX Server listening on port ${PORT} [${config.env}]`);
       logger.info(`Health check available at http://localhost:${PORT}/api/health`);
@@ -24,6 +27,9 @@ const startServer = async () => {
     // Graceful shutdown handling
     const shutdown = async (signal) => {
       logger.info(`${signal} received. Initiating graceful shutdown...`);
+      if (expiryCronTask) {
+        expiryCronTask.stop();
+      }
       server.close(async () => {
         logger.info('HTTP server closed.');
         try {
