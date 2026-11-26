@@ -11,6 +11,10 @@ import { DashboardPage } from './pages/DashboardPage';
 import { VerificationPage } from './pages/VerificationPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PublicProfilePage } from './pages/PublicProfilePage';
+import { MarketplacePage } from './pages/MarketplacePage';
+import { ProductDetailPage } from './pages/ProductDetailPage';
+import { SellPage } from './pages/SellPage';
+import { MyListingsPage } from './pages/MyListingsPage';
 import { useAuthStore } from './store';
 
 function App() {
@@ -29,6 +33,8 @@ function App() {
           <main>
             <Routes>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/marketplace" element={<MarketplacePage />} />
+              <Route path="/products/:id" element={<ProductDetailPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/users/:id" element={<PublicProfilePage />} />
@@ -53,6 +59,30 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <ProfilePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sell"
+                element={
+                  <ProtectedRoute>
+                    <SellPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sell/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <SellPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-listings"
+                element={
+                  <ProtectedRoute>
+                    <MyListingsPage />
                   </ProtectedRoute>
                 }
               />
