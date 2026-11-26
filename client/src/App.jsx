@@ -1,22 +1,59 @@
 // client/src/App.jsx
-import React from 'react';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { RoleRoute } from './components/RoleRoute';
 import { LandingPage } from './pages/LandingPage';
+import { LoginPage } from './pages/LoginPage';
+import { SignupPage } from './pages/SignupPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { useAuthStore } from './store';
 
 function App() {
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 flex flex-col justify-between">
-      <div>
-        <Navbar />
-        <main>
-          <LandingPage />
-        </main>
-      </div>
+  const silentRefresh = useAuthStore((state) => state.silentRefresh);
 
-      <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-400">
-        <p>CampusX Engineering Team • MERN + PostgreSQL + Prisma + FastAPI • 20-Day Campus Marketplace Sprint</p>
-      </footer>
-    </div>
+  // Attempt silent session restore via httpOnly refresh cookie on app load
+  useEffect(() => {
+    silentRefresh();
+  }, [silentRefresh]);
+
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 flex flex-col justify-between">
+        <div>
+          <Navbar />
+          <main>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <RoleRoute allowedRoles={['ADMIN', 'MODERATOR']}>
+                    <DashboardPage />
+                  </RoleRoute>
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+        </div>
+
+        <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-400">
+          <p>CampusX Engineering Team • MERN + PostgreSQL + Prisma + FastAPI • 20-Day Campus Marketplace Sprint</p>
+        </footer>
+      </div>
+    </BrowserRouter>
   );
 }
 

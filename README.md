@@ -20,28 +20,28 @@
 
 ## 🗺️ 20-Day Engineering Roadmap
 
-| Day | Focus Area | Key Deliverables |
-|:---:|:---|:---|
-| **Day 1** | **Project Foundation & Architecture** | Monorepo layout, Express modular monolith, Prisma + PostgreSQL, React + Vite + Tailwind frontend, FastAPI AI skeleton, Docker containerization, GitHub Actions CI, and `/health` endpoints. |
-| **Day 2** | **Auth & University Verification** | JWT access & refresh tokens, argon2/bcrypt password hashing, university email verification (`.edu`), role-based access control (Student, Faculty, Admin). |
-| **Day 3** | **User Profiles & Campus Directory** | Profile models, campus affiliation (majors, graduation year, dorms), student ID verification badges, public student trust profiles. |
-| **Day 4** | **Marketplace Listings Schema & CRUD** | Listing models (Textbooks, Electronics, Dorm Gear, Housing/Subleases), status transitions (Active, Reserved, Sold), pagination & sorting. |
-| **Day 5** | **Campus Search & Filtering Engine** | Full-text indexing, campus filtering, category filters, price range sliders, condition filters. |
-| **Day 6** | **Media Storage & Image Pipeline** | S3-compatible cloud storage, multi-image uploads, thumbnail generation, file validation, CDN delivery. |
-| **Day 7** | **AI Service: Auto-Categorization & Tagging** | FastAPI text processing, zero-shot/embedding-based category prediction, auto-tagging of item condition and academic course codes. |
-| **Day 8** | **AI Service: Price Recommendation Engine** | Pricing algorithms analyzing historical campus transactions, MSRP depreciation models, fair-market price badges. |
-| **Day 9** | **Real-Time Buyer-Seller Messaging** | WebSocket / Socket.io architecture, instant direct messaging, chat history persistence, unread badge counts. |
-| **Day 10** | **In-App & Email Notifications** | Event-based notifications for new messages, price drops on saved items, offer updates, and university email alerts. |
-| **Day 11** | **Offer Negotiation & Escrow/Hold System** | Formal offer workflow (Make Offer, Counter, Accept, Decline), campus meeting-point suggestions, hold timer before re-listing. |
-| **Day 12** | **Trust, Reviews & Reputation Scores** | Post-transaction review system, 5-star ratings, verified transaction badges, anti-fraud community reporting flags. |
-| **Day 13** | **Redis Caching & Performance Layer** | Redis caching for hot marketplace listings, user session storage, distributed rate limiting with Redis store. |
-| **Day 14** | **Event-Driven Architecture with Kafka** | Kafka event bus for async events: `listing.created`, `offer.accepted`, `user.registered`, audit logging, and search index updates. |
-| **Day 15** | **AI Service: Visual Search & Duplicate Detection** | Vector search using CLIP image embeddings, "find similar items" visual search, duplicate listing prevention. |
-| **Day 16** | **Content Safety & Moderation Pipeline** | Automated scanning for prohibited items (weapons, drugs, unauthorized exam materials), profanity masking, admin moderation dashboard. |
-| **Day 17** | **Observability, Telemetry & Logging** | Prometheus metrics exporter (`/metrics`), Grafana dashboard provisioning, structured Pino logging with trace IDs. |
-| **Day 18** | **Testing & Performance Benchmarking** | End-to-end integration test suites (Supertest, Jest, Playwright), k6 load testing for peak campus back-to-school traffic. |
-| **Day 19** | **Hardening & Security Audits** | OWASP Top 10 compliance audit, database connection pooling tuning, secrets rotation strategy, production Docker builds. |
-| **Day 20** | **Campus Launch Readiness & Demo** | Staging dry-run, seed data generator for university campuses, API documentation (Swagger/OpenAPI), launch checklist. |
+| Day | Focus Area | Status | Key Deliverables |
+|:---:|:---|:---:|:---|
+| **Day 1** | **Project Foundation & Architecture** | ✅ Done | Monorepo layout, Express modular monolith, Prisma + PostgreSQL, React + Vite + Tailwind frontend, FastAPI AI skeleton, Docker containerization, GitHub Actions CI, and `/health` endpoints. |
+| **Day 2** | **Authentication & Role-Based Access Control** | 🚧 In Progress | JWT access tokens (15m), opaque refresh tokens (SHA-256 hashed, 7d) in httpOnly cookie with rotation + reuse detection, bcrypt (12 rounds), RBAC (`STUDENT`, `MODERATOR`, `ADMIN`), admin role management, seed script, Zustand in-memory auth store & Axios refresh interceptor. |
+| **Day 3** | **University Email Verification & Campus Profiles** | ⏳ Planned | `.edu` university email verification, profile models, campus affiliation (majors, graduation year, dorms), student ID verification badges. |
+| **Day 4** | **Marketplace Listings Schema & CRUD** | ⏳ Planned | Listing models (Textbooks, Electronics, Dorm Gear, Housing/Subleases), status transitions (Active, Reserved, Sold), pagination & sorting. |
+| **Day 5** | **Campus Search & Filtering Engine** | ⏳ Planned | Full-text indexing, campus filtering, category filters, price range sliders, condition filters. |
+| **Day 6** | **Media Storage & Image Pipeline** | ⏳ Planned | S3-compatible cloud storage, multi-image uploads, thumbnail generation, file validation, CDN delivery. |
+| **Day 7** | **AI Service: Auto-Categorization & Tagging** | ⏳ Planned | FastAPI text processing, zero-shot/embedding-based category prediction, auto-tagging of item condition and academic course codes. |
+| **Day 8** | **AI Service: Price Recommendation Engine** | ⏳ Planned | Pricing algorithms analyzing historical campus transactions, MSRP depreciation models, fair-market price badges. |
+| **Day 9** | **Real-Time Buyer-Seller Messaging** | ⏳ Planned | WebSocket / Socket.io architecture, instant direct messaging, chat history persistence, unread badge counts. |
+| **Day 10** | **In-App & Email Notifications** | ⏳ Planned | Event-based notifications for new messages, price drops on saved items, offer updates, and university email alerts. |
+| **Day 11** | **Offer Negotiation & Escrow/Hold System** | ⏳ Planned | Formal offer workflow (Make Offer, Counter, Accept, Decline), campus meeting-point suggestions, hold timer before re-listing. |
+| **Day 12** | **Trust, Reviews & Reputation Scores** | ⏳ Planned | Post-transaction review system, 5-star ratings, verified transaction badges, anti-fraud community reporting flags. |
+| **Day 13** | **Redis Caching & Performance Layer** | ⏳ Planned | Redis caching for hot marketplace listings, user session storage, distributed rate limiting with Redis store. |
+| **Day 14** | **Event-Driven Architecture with Kafka** | ⏳ Planned | Kafka event bus for async events: `listing.created`, `offer.accepted`, `user.registered`, audit logging, and search index updates. |
+| **Day 15** | **AI Service: Visual Search & Duplicate Detection** | ⏳ Planned | Vector search using CLIP image embeddings, "find similar items" visual search, duplicate listing prevention. |
+| **Day 16** | **Content Safety & Moderation Pipeline** | ⏳ Planned | Automated scanning for prohibited items (weapons, drugs, unauthorized exam materials), profanity masking, admin moderation dashboard. |
+| **Day 17** | **Observability, Telemetry & Logging** | ⏳ Planned | Prometheus metrics exporter (`/metrics`), Grafana dashboard provisioning, structured Pino logging with trace IDs. |
+| **Day 18** | **Testing & Performance Benchmarking** | ⏳ Planned | End-to-end integration test suites (Supertest, Jest, Playwright), k6 load testing for peak campus back-to-school traffic. |
+| **Day 19** | **Hardening & Security Audits** | ⏳ Planned | OWASP Top 10 compliance audit, database connection pooling tuning, secrets rotation strategy, production Docker builds. |
+| **Day 20** | **Campus Launch Readiness & Demo** | ⏳ Planned | Staging dry-run, seed data generator for university campuses, API documentation (Swagger/OpenAPI), launch checklist. |
 
 ---
 
@@ -199,7 +199,24 @@ npm test
 
 ---
 
-## 🔒 Security Architecture (Day 1)
+## 🔐 Auth API
+
+All authentication endpoints are mounted under `/api/auth` (and RBAC admin endpoints under `/api/admin`). Refresh tokens are issued as `httpOnly`, `SameSite=Strict` (`Secure` in production) cookies, while short-lived JWT access tokens (15m) are returned in JSON and held in memory only on the client.
+
+| Method | Endpoint | Access | Rate Limit | Description |
+|:---:|:---|:---|:---:|:---|
+| `POST` | `/api/auth/signup` | Public | Strict | Register a new `STUDENT` user (validates name, email, password strength; bcrypt 12 rounds). |
+| `POST` | `/api/auth/login` | Public | Strict | Authenticate user; returns `accessToken` + user profile and sets refresh token cookie. |
+| `POST` | `/api/auth/refresh` | Cookie (`refreshToken`) | Strict | Rotate refresh token and issue new token pair. Revokes all user tokens on reuse detection. |
+| `POST` | `/api/auth/logout` | Cookie (`refreshToken`) | Standard | Revoke the active refresh token and clear the cookie. |
+| `POST` | `/api/auth/logout-all` | Bearer JWT | Standard | Revoke all active refresh tokens for the authenticated user and clear cookie. |
+| `GET` | `/api/auth/me` | Bearer JWT | Standard | Return the authenticated user's profile (excludes `passwordHash`). |
+| `GET` | `/api/admin/users` | `ADMIN`, `MODERATOR` | Standard | List users with pagination (`?page=1&limit=10`), excluding `passwordHash`. |
+| `PATCH` | `/api/admin/users/:id/role` | `ADMIN` only | Standard | Update a user's role (`STUDENT`, `MODERATOR`, `ADMIN`). Blocks self-demotion. |
+
+---
+
+## 🔒 Security Architecture
 - **Helmet**: Secures HTTP response headers against clickjacking, sniffing, and XSS.
 - **CORS Whitelist**: Whitelists only trusted origins defined in `CORS_ORIGIN`.
 - **Express Rate Limit**: Prevents brute-force and DoS attacks (default 100 requests per 15 minutes per IP).

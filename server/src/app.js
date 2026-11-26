@@ -1,18 +1,26 @@
 // server/src/app.js
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const { setupSecurityMiddleware } = require('./middleware/security');
 const errorHandler = require('./middleware/errorHandler');
 const { errorResponse } = require('./utils/response');
 const healthRoutes = require('./modules/health/health.routes');
+const authRoutes = require('./modules/auth/auth.routes');
+const adminRoutes = require('./modules/admin/admin.routes');
 
 const app = express();
 
 // Apply security middleware (Helmet, CORS, rate-limit, XSS, body limits)
 setupSecurityMiddleware(app);
 
-// Mount health routes (accessible at /api/health and /health for container probes)
+// Parse HTTP-only cookies for refresh token flows
+app.use(cookieParser());
+
+// Mount routes
 app.use('/api/health', healthRoutes);
 app.use('/health', healthRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Root route
 app.get('/', (req, res) => {
