@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { prisma } = require('../../config/db');
 const AppError = require('../../utils/AppError');
+const { sanitizePlainText } = require('../../utils/sanitize');
 const { USER_PUBLIC_SELECT } = require('../auth/auth.service');
 
 const AVATARS_DIR = path.resolve(__dirname, '../../../uploads/avatars');
@@ -19,20 +20,6 @@ const PUBLIC_PROFILE_SELECT = {
   ratingAverage: true,
   ratingCount: true,
   isVerifiedStudent: true,
-};
-
-/**
- * Strips HTML tags and script/event-handler payloads to guard against stored XSS.
- */
-const sanitizePlainText = (value) => {
-  if (value === null || value === undefined) return value;
-  return String(value)
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-    .replace(/<[^>]*>/g, '')
-    .replace(/javascript:/gi, '')
-    .replace(/on\w+\s*=/gi, '')
-    .trim();
 };
 
 /**

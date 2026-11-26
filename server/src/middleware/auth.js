@@ -93,8 +93,46 @@ const requireVerifiedStudent = (req, res, next) => {
   return next();
 };
 
+/**
+ * Optionally parses Bearer JWT if provided; proceeds anonymously if absent or invalid.
+ */
+const optionalAuthenticate = asyncHandler(async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    req.user = null;
+    return next();
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.jwt.accessSecret);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.sub },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        isVerifiedStudent: true,
+      },
+    });
+    req.user = user && user.isActive ? user : null;
+  } catch {
+    req.user = null;
+  }
+
+  return next();
+});
+
 module.exports = {
   authenticate,
+  optionalAuthenticate,
   authorize,
   requireVerifiedStudent,
 };
