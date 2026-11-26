@@ -25,7 +25,7 @@
 | **Day 1** | **Project Foundation & Architecture** | ✅ Done | Monorepo layout, Express modular monolith, Prisma + PostgreSQL, React + Vite + Tailwind frontend, FastAPI AI skeleton, Docker containerization, GitHub Actions CI, and `/health` endpoints. |
 | **Day 2** | **Authentication & Role-Based Access Control** | ✅ Done | JWT access tokens (15m), opaque refresh tokens (SHA-256 hashed, 7d) in httpOnly cookie with rotation + reuse detection, bcrypt (12 rounds), RBAC (`STUDENT`, `MODERATOR`, `ADMIN`), admin role management, seed script, Zustand in-memory auth store & Axios refresh interceptor. |
 | **Day 3** | **Student Verification & User Profiles** | ✅ Done | College email domain whitelist + 6-digit SHA-256 OTP verification (`Nodemailer` / dev console), `requireVerifiedStudent` middleware, profile CRUD with bio XSS sanitization, avatar upload (`multer` + magic-byte validation), public profile endpoint, verified badge UI. |
-| **Day 4** | **Marketplace Core: Listings, Categories, Conditions & Lifecycle** | 🚧 In Progress | `Category` & `Product` Prisma models + idempotent category seed, Draft/Publish workflow (`requireVerifiedStudent`), central lifecycle state machine (`DRAFT`, `ACTIVE`, `RESERVED`, `SOLD`, `EXPIRED`, `UNDER_REVIEW`), soft-delete, view counting, moderator review hook, hourly expiry cron (`node-cron`), and Marketplace/Sell/Detail/My Listings UI. |
+| **Day 4** | **Marketplace Core: Listings, Categories, Conditions & Lifecycle** | ✅ Done | `Category` & `Product` Prisma models + idempotent category seed, Draft/Publish workflow (`requireVerifiedStudent`), central lifecycle state machine (`DRAFT`, `ACTIVE`, `RESERVED`, `SOLD`, `EXPIRED`, `UNDER_REVIEW`), soft-delete, view counting, moderator review hook, hourly expiry cron (`node-cron`), and Marketplace/Sell/Detail/My Listings UI. |
 | **Day 5** | **Campus Search & Filtering Engine** | ⏳ Planned | Full-text indexing, campus filtering, category filters, price range sliders, condition filters. |
 | **Day 6** | **Media Storage & Image Pipeline** | ⏳ Planned | S3-compatible cloud storage, multi-image uploads, thumbnail generation, file validation, CDN delivery. |
 | **Day 7** | **AI Service: Auto-Categorization & Tagging** | ⏳ Planned | FastAPI text processing, zero-shot/embedding-based category prediction, auto-tagging of item condition and academic course codes. |
@@ -63,14 +63,13 @@ campusx/
 │   ├── .gitignore
 │   └── requirements.txt         # FastAPI, Uvicorn, Pydantic dependencies
 ├── client/                      # React + Vite + Tailwind CSS frontend
-│   ├── public/                  # Static assets and favicon
 │   ├── src/
-│   │   ├── components/          # Reusable UI components (Navbar, Cards, Badges)
-│   │   ├── hooks/               # Custom React hooks (e.g., useHealth)
-│   │   ├── pages/               # Application views (LandingPage)
-│   │   ├── services/            # API client layer (Axios instance)
-│   │   ├── store/               # State management store placeholder
-│   │   ├── App.jsx              # App root component
+│   │   ├── components/          # Reusable UI (Navbar, Badges, ProtectedRoute, RoleRoute, HealthCard)
+│   │   ├── hooks/               # Custom React hooks (useHealth)
+│   │   ├── pages/               # Views (Landing, Login, Signup, Dashboard, Verify, Profile, PublicProfile, Marketplace, ProductDetail, Sell, MyListings)
+│   │   ├── services/            # Axios client + 401 refresh interceptor + API wrappers
+│   │   ├── store/               # Zustand auth store (in-memory accessToken)
+│   │   ├── App.jsx              # Routes & silent refresh bootstrap
 │   │   ├── index.css            # Tailwind directives and global styles
 │   │   └── main.jsx             # React DOM entrypoint
 │   ├── .env.example             # Client environment sample
@@ -79,23 +78,32 @@ campusx/
 │   ├── package.json             # Frontend dependencies & build scripts
 │   ├── postcss.config.js        # PostCSS configuration
 │   ├── tailwind.config.js       # Tailwind CSS theme configuration
-│   └── vite.config.js           # Vite dev server & proxy configuration
+│   └── vite.config.js           # Vite dev server configuration
 ├── docker/
 │   ├── Dockerfile.ai-service    # Python 3.11 slim container build
-│   ├── Dockerfile.client        # Node.js build + Nginx static server
-│   └── Dockerfile.server        # Node.js alpine container build
+│   ├── Dockerfile.client        # Node.js build + Vite preview server
+│   └── Dockerfile.server        # Node.js alpine build (runs prisma migrate deploy + seed)
 ├── server/                      # Node.js + Express Modular Monolith
 │   ├── prisma/
-│   │   └── schema.prisma        # Prisma schema with PostgreSQL datasource & User model
+│   │   ├── migrations/          # Committed PostgreSQL migrations (Days 2–4)
+│   │   ├── schema.prisma        # User, RefreshToken, EmailOtp, Category, Product models
+│   │   └── seed.js              # Idempotent ADMIN user & 10 marketplace categories seed
 │   ├── src/
-│   │   ├── config/              # Environment loader & DB client singleton
-│   │   ├── middleware/          # Security (Helmet, CORS, Rate Limit, XSS) & Error handlers
-│   │   ├── modules/             # Domain modules (health, auth, listings, users)
-│   │   │   └── health/          # Health module (controller, routes)
-│   │   ├── utils/               # Logger (Pino), async wrapper, standard JSON responses
+│   │   ├── config/              # Environment loader & Prisma DB client singleton
+│   │   ├── jobs/                # Hourly listing expiry cron job (node-cron)
+│   │   ├── middleware/          # Auth/RBAC, requireVerifiedStudent, Security (Helmet, CORS, Rate Limit, XSS), Validator, Error handler
+│   │   ├── modules/             # Domain modules:
+│   │   │   ├── admin/           # Admin user management & product moderation hook
+│   │   │   ├── auth/            # Signup, login, refresh rotation + reuse detection, logout
+│   │   │   ├── categories/      # Public categories endpoint
+│   │   │   ├── health/          # Service & DB healthcheck
+│   │   │   ├── products/        # Draft/Publish CRUD, lifecycle transitions, soft-delete, views
+│   │   │   ├── users/           # Profiles, XSS bio sanitization, magic-byte avatar upload
+│   │   │   └── verification/    # College domain check + 6-digit SHA-256 OTP flow
+│   │   ├── utils/               # Logger (Pino), Mailer (Nodemailer), XSS sanitizer, AppError, responses
 │   │   ├── app.js               # Express application setup (exported for tests)
-│   │   └── index.js             # Server bootstrap & process lifecycle entrypoint
-│   ├── tests/                   # Jest + Supertest integration test suite
+│   │   └── index.js             # Server bootstrap, expiry cron & graceful shutdown
+│   ├── tests/                   # Jest + Supertest suites (health, auth, verification, users, products)
 │   ├── .env.example             # Server environment sample
 │   ├── .gitignore
 │   └── package.json             # Express dependencies, Prisma, Jest scripts
