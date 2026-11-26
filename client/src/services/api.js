@@ -111,6 +111,14 @@ apiClient.interceptors.response.use(
   }
 );
 
+export const resolveAssetUrl = (assetPath) => {
+  if (!assetPath) return null;
+  if (assetPath.startsWith('http://') || assetPath.startsWith('https://') || assetPath.startsWith('blob:')) {
+    return assetPath;
+  }
+  return `${API_BASE_URL}${assetPath}`;
+};
+
 export const checkServerHealth = () => apiClient.get('/api/health');
 export const checkAiHealth = () => aiClient.get('/health');
 export const authApi = {
@@ -120,4 +128,20 @@ export const authApi = {
   logout: () => apiClient.post('/api/auth/logout'),
   logoutAll: () => apiClient.post('/api/auth/logout-all'),
   me: () => apiClient.get('/api/auth/me'),
+};
+
+export const verificationApi = {
+  requestOtp: (collegeEmail) => apiClient.post('/api/verification/request', { collegeEmail }),
+  confirmOtp: (otp) => apiClient.post('/api/verification/confirm', { otp }),
+  getStatus: () => apiClient.get('/api/verification/status'),
+};
+
+export const usersApi = {
+  getMyProfile: () => apiClient.get('/api/users/me/profile'),
+  updateMyProfile: (data) => apiClient.patch('/api/users/me/profile', data),
+  uploadAvatar: (formData) =>
+    apiClient.post('/api/users/me/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  getPublicProfile: (id) => apiClient.get(`/api/users/${id}`),
 };
