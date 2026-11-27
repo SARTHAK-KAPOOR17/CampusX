@@ -169,3 +169,8 @@ export const productsApi = {
   reorderImages: (id, imageIds) =>
     apiClient.patch(`/api/products/${id}/images/order`, { imageIds }),
 };
+
+export const searchApi = {
+  suggest: (q) => apiClient.get('/api/search/suggest', { params: { q } }),
+  popular: () => apiClient.get('/api/search/popular'),
+};
