@@ -4,6 +4,12 @@ const config = require('../../config');
 const { prisma } = require('../../config/db');
 const AppError = require('../../utils/AppError');
 const { sanitizePlainText } = require('../../utils/sanitize');
+const { formatUserWithAvatar } = require('../../utils/userFormatter');
+const { deleteVariants } = require('../../services/images');
+const {
+  formatProductImage,
+  formatPrimaryImage,
+} = require('../product-images/productImages.service');
 
 const EDITABLE_STATUSES = ['DRAFT', 'ACTIVE', 'RESERVED'];
 const PUBLIC_VISIBLE_STATUSES = ['ACTIVE', 'RESERVED', 'SOLD'];
@@ -15,7 +21,7 @@ const FEED_STATUSES = ['ACTIVE', 'RESERVED'];
  */
 const TRANSITION_MAP = {
   seller: {
-    DRAFT: ['ACTIVE'], // only via publish endpoint or explicit publish helper
+    DRAFT: ['ACTIVE'], // via /publish
     ACTIVE: ['RESERVED', 'SOLD'],
     RESERVED: ['ACTIVE', 'SOLD'],
     EXPIRED: ['ACTIVE'], // relist
@@ -35,7 +41,7 @@ const TRANSITION_MAP = {
 const SELLER_PUBLIC_SELECT = {
   id: true,
   name: true,
-  profilePictureUrl: true,
+  avatarKey: true,
   isVerifiedStudent: true,
   ratingAverage: true,
 };
@@ -46,16 +52,66 @@ const CATEGORY_SELECT = {
   slug: true,
 };
 
-const PRODUCT_INCLUDE = {
+const PRODUCT_DETAIL_INCLUDE = {
   seller: { select: SELLER_PUBLIC_SELECT },
   category: { select: CATEGORY_SELECT },
+  images: {
+    orderBy: { position: 'asc' },
+    select: {
+      id: true,
+      storageKey: true,
+      position: true,
+      isPrimary: true,
+      width: true,
+      height: true,
+      sizeBytes: true,
+      blurDataUrl: true,
+    },
+  },
 };
 
-const formatProduct = (product) => {
+const PRODUCT_LIST_INCLUDE = {
+  seller: { select: SELLER_PUBLIC_SELECT },
+  category: { select: CATEGORY_SELECT },
+  images: {
+    where: { isPrimary: true },
+    take: 1,
+    select: {
+      id: true,
+      storageKey: true,
+      blurDataUrl: true,
+    },
+  },
+};
+
+const formatProductDetail = async (product) => {
   if (!product) return null;
+  const [seller, images] = await Promise.all([
+    formatUserWithAvatar(product.seller),
+    Promise.all((product.images || []).map(formatProductImage)),
+  ]);
+
   return {
     ...product,
     price: product.price !== null && product.price !== undefined ? Number(product.price) : null,
+    seller,
+    images,
+  };
+};
+
+const formatProductListItem = async (product) => {
+  if (!product) return null;
+  const { images, ...rest } = product;
+  const [seller, primaryImage] = await Promise.all([
+    formatUserWithAvatar(product.seller),
+    formatPrimaryImage(images && images[0] ? images[0] : null),
+  ]);
+
+  return {
+    ...rest,
+    price: product.price !== null && product.price !== undefined ? Number(product.price) : null,
+    seller,
+    primaryImage,
   };
 };
 
@@ -111,7 +167,7 @@ const ensureCategoryExists = async (categoryId) => {
   return category;
 };
 
-const assertReadyToPublish = (product) => {
+const assertReadyToPublish = (product, { requireImages = true } = {}) => {
   const missing = [];
   if (!product.title || !String(product.title).trim()) missing.push('title');
   if (!product.description || !String(product.description).trim()) missing.push('description');
@@ -125,12 +181,22 @@ const assertReadyToPublish = (product) => {
       422
     );
   }
+
+  if (requireImages) {
+    const imageCount = Array.isArray(product.images) ? product.images.length : 0;
+    if (imageCount < 1) {
+      throw new AppError(
+        'Listing must have at least 1 image before publishing.',
+        422
+      );
+    }
+  }
 };
 
 const findActiveProductOrThrow = async (productId) => {
   const product = await prisma.product.findFirst({
     where: { id: productId, deletedAt: null },
-    include: PRODUCT_INCLUDE,
+    include: PRODUCT_DETAIL_INCLUDE,
   });
   if (!product) {
     throw new AppError('Product listing not found.', 404);
@@ -139,7 +205,8 @@ const findActiveProductOrThrow = async (productId) => {
 };
 
 /**
- * Create a new product listing as DRAFT or immediately ACTIVE.
+ * Create a new product listing as DRAFT (0 images allowed) or ACTIVE.
+ * Note: Publishing requires at least 1 image; direct saveAsDraft=false without images is rejected.
  */
 const createProduct = async (sellerId, payload) => {
   const saveAsDraft = payload.saveAsDraft === true;
@@ -180,18 +247,16 @@ const createProduct = async (sellerId, payload) => {
   };
 
   if (!saveAsDraft) {
-    assertReadyToPublish(data);
-    const now = new Date();
-    data.publishedAt = now;
-    data.expiresAt = getExpiresAt(now);
+    // New listing has 0 images yet; require saving as draft and uploading images first
+    assertReadyToPublish({ ...data, images: [] }, { requireImages: true });
   }
 
   const created = await prisma.product.create({
     data,
-    include: PRODUCT_INCLUDE,
+    include: PRODUCT_DETAIL_INCLUDE,
   });
 
-  return formatProduct(created);
+  return formatProductDetail(created);
 };
 
 /**
@@ -257,25 +322,24 @@ const updateProduct = async (productId, actorId, payload) => {
     updateData.tags = sanitizeTags(payload.tags);
   }
 
-  // Published listings must keep required fields intact
   if (existing.status !== 'DRAFT') {
-    assertReadyToPublish({
-      ...existing,
-      ...updateData,
-    });
+    assertReadyToPublish(
+      { ...existing, ...updateData },
+      { requireImages: false }
+    );
   }
 
   const updated = await prisma.product.update({
     where: { id: productId },
     data: updateData,
-    include: PRODUCT_INCLUDE,
+    include: PRODUCT_DETAIL_INCLUDE,
   });
 
-  return formatProduct(updated);
+  return formatProductDetail(updated);
 };
 
 /**
- * Publishes a DRAFT listing (DRAFT -> ACTIVE).
+ * Publishes a DRAFT listing (DRAFT -> ACTIVE). Requires at least 1 uploaded image.
  */
 const publishProduct = async (productId, actorId) => {
   const existing = await findActiveProductOrThrow(productId);
@@ -292,7 +356,7 @@ const publishProduct = async (productId, actorId) => {
   }
 
   assertTransitionAllowed('seller', existing.status, 'ACTIVE');
-  assertReadyToPublish(existing);
+  assertReadyToPublish(existing, { requireImages: true });
 
   const now = new Date();
   const updated = await prisma.product.update({
@@ -302,10 +366,10 @@ const publishProduct = async (productId, actorId) => {
       publishedAt: now,
       expiresAt: getExpiresAt(now),
     },
-    include: PRODUCT_INCLUDE,
+    include: PRODUCT_DETAIL_INCLUDE,
   });
 
-  return formatProduct(updated);
+  return formatProductDetail(updated);
 };
 
 /**
@@ -318,7 +382,6 @@ const updateSellerStatus = async (productId, actorId, targetStatus) => {
     throw new AppError('Forbidden: you can only update the status of your own listings.', 403);
   }
 
-  // DRAFT must go through /publish, not /status
   if (existing.status === 'DRAFT') {
     throw new AppError(
       'Invalid status transition: DRAFT listings must be published via /publish.',
@@ -335,9 +398,8 @@ const updateSellerStatus = async (productId, actorId, targetStatus) => {
     updateData.soldAt = now;
   }
 
-  // Relisting an EXPIRED listing resets expiresAt
   if (existing.status === 'EXPIRED' && targetStatus === 'ACTIVE') {
-    assertReadyToPublish(existing);
+    assertReadyToPublish(existing, { requireImages: true });
     updateData.publishedAt = existing.publishedAt || now;
     updateData.expiresAt = getExpiresAt(now);
   }
@@ -345,10 +407,10 @@ const updateSellerStatus = async (productId, actorId, targetStatus) => {
   const updated = await prisma.product.update({
     where: { id: productId },
     data: updateData,
-    include: PRODUCT_INCLUDE,
+    include: PRODUCT_DETAIL_INCLUDE,
   });
 
-  return formatProduct(updated);
+  return formatProductDetail(updated);
 };
 
 /**
@@ -361,14 +423,14 @@ const updateModeratorStatus = async (productId, targetStatus) => {
   const updated = await prisma.product.update({
     where: { id: productId },
     data: { status: targetStatus },
-    include: PRODUCT_INCLUDE,
+    include: PRODUCT_DETAIL_INCLUDE,
   });
 
-  return formatProduct(updated);
+  return formatProductDetail(updated);
 };
 
 /**
- * Hard delete DRAFT listings; soft delete (deletedAt) all other statuses.
+ * Hard delete DRAFT listings (and delete storage objects); soft delete (deletedAt) all other statuses (keep storage objects).
  * Allowed for owner or ADMIN.
  */
 const deleteProduct = async (productId, actor) => {
@@ -382,7 +444,9 @@ const deleteProduct = async (productId, actor) => {
   }
 
   if (existing.status === 'DRAFT') {
+    const keysToDelete = (existing.images || []).map((img) => img.storageKey);
     await prisma.product.delete({ where: { id: productId } });
+    await Promise.all(keysToDelete.map((key) => deleteVariants(key)));
     return { id: productId, deletionType: 'hard' };
   }
 
@@ -412,16 +476,17 @@ const getProductById = async (productId, viewer = null) => {
     const incremented = await prisma.product.update({
       where: { id: productId },
       data: { viewCount: { increment: 1 } },
-      include: PRODUCT_INCLUDE,
+      include: PRODUCT_DETAIL_INCLUDE,
     });
-    return formatProduct(incremented);
+    return formatProductDetail(incremented);
   }
 
-  return formatProduct(existing);
+  return formatProductDetail(existing);
 };
 
 /**
  * Public paginated marketplace feed (ACTIVE & RESERVED only, newest first).
+ * Uses a single Prisma query with primary image include (zero N+1 queries) and local CPU signing.
  */
 const listPublicProducts = async ({ page = 1, limit = 12, categoryId = null }) => {
   const safePage = Math.max(1, Number(page) || 1);
@@ -440,13 +505,13 @@ const listPublicProducts = async ({ page = 1, limit = 12, categoryId = null }) =
       skip,
       take: safeLimit,
       orderBy: { createdAt: 'desc' },
-      include: PRODUCT_INCLUDE,
+      include: PRODUCT_LIST_INCLUDE,
     }),
     prisma.product.count({ where }),
   ]);
 
   return {
-    products: products.map(formatProduct),
+    products: await Promise.all(products.map(formatProductListItem)),
     pagination: {
       total,
       page: safePage,
@@ -457,7 +522,7 @@ const listPublicProducts = async ({ page = 1, limit = 12, categoryId = null }) =
 };
 
 /**
- * Seller's own listings with optional ?status= filter.
+ * Seller's own listings with optional ?status= filter (zero N+1 queries).
  */
 const listMyProducts = async (sellerId, { page = 1, limit = 20, status = null }) => {
   const safePage = Math.max(1, Number(page) || 1);
@@ -476,13 +541,13 @@ const listMyProducts = async (sellerId, { page = 1, limit = 20, status = null })
       skip,
       take: safeLimit,
       orderBy: { createdAt: 'desc' },
-      include: PRODUCT_INCLUDE,
+      include: PRODUCT_LIST_INCLUDE,
     }),
     prisma.product.count({ where }),
   ]);
 
   return {
-    products: products.map(formatProduct),
+    products: await Promise.all(products.map(formatProductListItem)),
     pagination: {
       total,
       page: safePage,

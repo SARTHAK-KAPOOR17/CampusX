@@ -1,18 +1,20 @@
 // server/src/modules/users/users.service.js
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const { prisma } = require('../../config/db');
 const AppError = require('../../utils/AppError');
 const { sanitizePlainText } = require('../../utils/sanitize');
+const { formatUserWithAvatar } = require('../../utils/userFormatter');
+const {
+  processImageVariants,
+  uploadVariants,
+  deleteVariants,
+} = require('../../services/images');
 const { USER_PUBLIC_SELECT } = require('../auth/auth.service');
-
-const AVATARS_DIR = path.resolve(__dirname, '../../../uploads/avatars');
 
 const PUBLIC_PROFILE_SELECT = {
   id: true,
   name: true,
-  profilePictureUrl: true,
+  avatarKey: true,
   course: true,
   branch: true,
   year: true,
@@ -20,53 +22,6 @@ const PUBLIC_PROFILE_SELECT = {
   ratingAverage: true,
   ratingCount: true,
   isVerifiedStudent: true,
-};
-
-/**
- * Validates actual image binary signature (magic bytes) for JPEG, PNG, and WebP.
- */
-const detectImageTypeByMagicBytes = (buffer) => {
-  if (!Buffer.isBuffer(buffer) || buffer.length < 12) {
-    return null;
-  }
-
-  // JPEG: FF D8 FF
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return { ext: '.jpg', mime: 'image/jpeg' };
-  }
-
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  const pngSig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-  if (pngSig.every((byte, idx) => buffer[idx] === byte)) {
-    return { ext: '.png', mime: 'image/png' };
-  }
-
-  // WebP: "RIFF" at 0..3 and "WEBP" at 8..11
-  if (
-    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
-    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
-  ) {
-    return { ext: '.webp', mime: 'image/webp' };
-  }
-
-  return null;
-};
-
-const deleteLocalAvatarIfExists = async (profilePictureUrl) => {
-  if (!profilePictureUrl || !profilePictureUrl.startsWith('/uploads/avatars/')) {
-    return;
-  }
-
-  const filename = path.basename(profilePictureUrl);
-  const fullPath = path.join(AVATARS_DIR, filename);
-
-  try {
-    await fs.promises.unlink(fullPath);
-  } catch (err) {
-    if (err.code !== 'ENOENT') {
-      throw err;
-    }
-  }
 };
 
 const getMyProfile = async (userId) => {
@@ -79,7 +34,7 @@ const getMyProfile = async (userId) => {
     throw new AppError('User not found.', 404);
   }
 
-  return user;
+  return formatUserWithAvatar(user);
 };
 
 const updateMyProfile = async (userId, payload) => {
@@ -94,11 +49,13 @@ const updateMyProfile = async (userId, payload) => {
   }
 
   if (payload.course !== undefined) {
-    updateData.course = payload.course === null || payload.course === '' ? null : sanitizePlainText(payload.course);
+    updateData.course =
+      payload.course === null || payload.course === '' ? null : sanitizePlainText(payload.course);
   }
 
   if (payload.branch !== undefined) {
-    updateData.branch = payload.branch === null || payload.branch === '' ? null : sanitizePlainText(payload.branch);
+    updateData.branch =
+      payload.branch === null || payload.branch === '' ? null : sanitizePlainText(payload.branch);
   }
 
   if (payload.year !== undefined) {
@@ -119,50 +76,44 @@ const updateMyProfile = async (userId, payload) => {
     select: USER_PUBLIC_SELECT,
   });
 
-  return user;
+  return formatUserWithAvatar(user);
 };
 
+/**
+ * Optimizes avatar via sharp (EXIF stripped, 3 WebP variants), uploads to private object storage,
+ * and deletes old avatar variant objects on replacement.
+ */
 const updateAvatar = async (userId, file) => {
   if (!file || !file.buffer) {
     throw new AppError('Avatar image file is required.', 400);
   }
 
-  const detected = detectImageTypeByMagicBytes(file.buffer);
-  if (!detected) {
-    throw new AppError(
-      'Invalid image file. Only genuine JPEG, PNG, and WebP images are allowed.',
-      400
-    );
-  }
-
-  // TODO: Day 5 will migrate avatar storage from local disk to cloud storage (S3 / R2).
-  await fs.promises.mkdir(AVATARS_DIR, { recursive: true });
-
   const existing = await prisma.user.findUnique({
     where: { id: userId },
-    select: { profilePictureUrl: true },
+    select: { avatarKey: true },
   });
 
   if (!existing) {
     throw new AppError('User not found.', 404);
   }
 
-  const filename = `${crypto.randomUUID()}${detected.ext}`;
-  const destination = path.join(AVATARS_DIR, filename);
-  await fs.promises.writeFile(destination, file.buffer);
+  const processed = await processImageVariants(file.buffer);
+  const imageId = crypto.randomUUID();
+  const baseKey = `avatars/${userId}/${imageId}`;
 
-  const profilePictureUrl = `/uploads/avatars/${filename}`;
+  await uploadVariants(baseKey, processed.variants);
 
   const updatedUser = await prisma.user.update({
     where: { id: userId },
-    data: { profilePictureUrl },
+    data: { avatarKey: baseKey },
     select: USER_PUBLIC_SELECT,
   });
 
-  // Delete previous local avatar after DB update succeeds
-  await deleteLocalAvatarIfExists(existing.profilePictureUrl);
+  if (existing.avatarKey) {
+    await deleteVariants(existing.avatarKey);
+  }
 
-  return updatedUser;
+  return formatUserWithAvatar(updatedUser);
 };
 
 const getPublicProfile = async (userId) => {
@@ -175,7 +126,7 @@ const getPublicProfile = async (userId) => {
     throw new AppError('User not found.', 404);
   }
 
-  return user;
+  return formatUserWithAvatar(user);
 };
 
 module.exports = {
@@ -183,7 +134,5 @@ module.exports = {
   updateMyProfile,
   updateAvatar,
   getPublicProfile,
-  detectImageTypeByMagicBytes,
   sanitizePlainText,
-  AVATARS_DIR,
 };

@@ -4,6 +4,7 @@ const config = require('../../config');
 const { prisma } = require('../../config/db');
 const AppError = require('../../utils/AppError');
 const mailer = require('../../utils/mailer');
+const { formatUserWithAvatar } = require('../../utils/userFormatter');
 const { USER_PUBLIC_SELECT } = require('../auth/auth.service');
 
 const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -232,7 +233,7 @@ const confirmOtp = async ({ userId, otp }) => {
     }),
   ]);
 
-  return updatedUser;
+  return formatUserWithAvatar(updatedUser);
 };
 
 /**

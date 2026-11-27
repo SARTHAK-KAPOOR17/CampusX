@@ -38,7 +38,10 @@ const errorHandler = (err, req, res, next) => {
   // Multer upload limits / file errors
   if (err.name === 'MulterError') {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return errorResponse(res, 'File size exceeds the 2MB maximum limit.', 400);
+      return errorResponse(res, 'File size exceeds the 5MB maximum limit.', 400);
+    }
+    if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return errorResponse(res, 'Too many files uploaded (maximum 6 per request).', 400);
     }
     return errorResponse(res, err.message || 'File upload failed.', 400);
   }

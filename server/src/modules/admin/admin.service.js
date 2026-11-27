@@ -1,6 +1,7 @@
 // server/src/modules/admin/admin.service.js
 const { prisma } = require('../../config/db');
 const AppError = require('../../utils/AppError');
+const { formatUserWithAvatar, formatUsersWithAvatar } = require('../../utils/userFormatter');
 const { USER_PUBLIC_SELECT } = require('../auth/auth.service');
 
 /**
@@ -22,7 +23,7 @@ const listUsers = async ({ page = 1, limit = 10 }) => {
   ]);
 
   return {
-    users,
+    users: await formatUsersWithAvatar(users),
     pagination: {
       total,
       page: safePage,
@@ -55,7 +56,7 @@ const updateUserRole = async ({ actorId, targetUserId, role }) => {
     select: USER_PUBLIC_SELECT,
   });
 
-  return updatedUser;
+  return formatUserWithAvatar(updatedUser);
 };
 
 module.exports = {

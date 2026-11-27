@@ -3,6 +3,8 @@ const express = require('express');
 const multer = require('multer');
 const validate = require('../../middleware/validator');
 const { authenticate } = require('../../middleware/auth');
+const { uploadLimiter } = require('../../middleware/security');
+const { MAX_IMAGE_SIZE_BYTES } = require('../../services/images');
 const { updateProfileValidation, publicProfileValidation } = require('./users.validators');
 const usersController = require('./users.controller');
 
@@ -11,7 +13,8 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB max
+    fileSize: MAX_IMAGE_SIZE_BYTES, // 5MB max
+    files: 1,
   },
 });
 
@@ -26,6 +29,7 @@ router.patch(
 router.post(
   '/me/avatar',
   authenticate,
+  uploadLimiter,
   upload.single('avatar'),
   usersController.uploadAvatar
 );
