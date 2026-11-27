@@ -26,8 +26,8 @@
 | **Day 2** | **Authentication & Role-Based Access Control** | ✅ Done | JWT access tokens (15m), opaque refresh tokens (SHA-256 hashed, 7d) in httpOnly cookie with rotation + reuse detection, bcrypt (12 rounds), RBAC (`STUDENT`, `MODERATOR`, `ADMIN`), admin role management, seed script, Zustand in-memory auth store & Axios refresh interceptor. |
 | **Day 3** | **Student Verification & User Profiles** | ✅ Done | College email domain whitelist + 6-digit SHA-256 OTP verification (`Nodemailer` / dev console), `requireVerifiedStudent` middleware, profile CRUD with bio XSS sanitization, avatar upload (`multer` + magic-byte validation), public profile endpoint, verified badge UI. |
 | **Day 4** | **Marketplace Core: Listings, Categories, Conditions & Lifecycle** | ✅ Done | `Category` & `Product` Prisma models + idempotent category seed, Draft/Publish workflow (`requireVerifiedStudent`), central lifecycle state machine (`DRAFT`, `ACTIVE`, `RESERVED`, `SOLD`, `EXPIRED`, `UNDER_REVIEW`), soft-delete, view counting, moderator review hook, hourly expiry cron (`node-cron`), and Marketplace/Sell/Detail/My Listings UI. |
-| **Day 5** | **Product Images & Cloud Storage** | 🚧 In Progress | S3-compatible storage abstraction (`MinIO` / AWS S3 / R2), `sharp` optimization pipeline (magic bytes, EXIF/GPS strip, 3 WebP variants + blur placeholder), `ProductImage` & `avatarKey` migration, presigned/CDN URLs, multi-image uploader, gallery & lightbox UI. |
-| **Day 6** | **Campus Search & Filtering Engine** | ⏳ Planned | Full-text indexing, campus filtering, category filters, price range sliders, condition filters. |
+| **Day 5** | **Product Images & Cloud Storage (+ Day 5B Verification Restriction)** | ✅ Done | S3-compatible storage abstraction (`MinIO` / AWS S3 / R2), `sharp` optimization pipeline (magic bytes, EXIF/GPS strip, 3 WebP variants + blur placeholder), `ProductImage` & `avatarKey` migration, presigned/CDN URLs, multi-image uploader, gallery & lightbox UI, and `@chitkara.edu.in` strict student email enforcement. |
+| **Day 6** | **Search Engine, Filters, Sorting & Redis Caching** | 🚧 In Progress | PostgreSQL `tsvector` (`A`/`B`/`C`) + `pg_trgm` GIN search & typo fallback, multi-facet filters, stable `id` tie-broken sorting, Redis (`ioredis`) fail-open cache (`SCAN`, stampede lock, versioned invalidation), Redis-backed rate limiting, 60s auth cache with immediate invalidation, autocomplete & `search:popular` tracking, responsive Client search/filter UI. |
 | **Day 7** | **AI Service: Auto-Categorization & Tagging** | ⏳ Planned | FastAPI text processing, zero-shot/embedding-based category prediction, auto-tagging of item condition and academic course codes. |
 | **Day 8** | **AI Service: Price Recommendation Engine** | ⏳ Planned | Pricing algorithms analyzing historical campus transactions, MSRP depreciation models, fair-market price badges. |
 | **Day 9** | **Real-Time Buyer-Seller Messaging** | ⏳ Planned | WebSocket / Socket.io architecture, instant direct messaging, chat history persistence, unread badge counts. |
@@ -341,6 +341,60 @@ STORAGE_ACCESS_KEY=<R2_ACCESS_KEY>
 STORAGE_SECRET_KEY=<R2_SECRET_KEY>
 STORAGE_FORCE_PATH_STYLE=true
 ```
+
+---
+
+## 🔍 Search & Caching
+
+### Search Architecture
+- **Weighted Full-Text Search**: PostgreSQL `products."searchVector"` generated `tsvector` column (`title` weight **A**, `tags` weight **B**, `description` weight **C**) indexed with `GIN` (`products_searchVector_gin_idx`). Queries use parameterized `websearch_to_tsquery('english', q)` ranked via `ts_rank(...)` with title prefix boost so title matches naturally outrank description matches.
+- **Typo-Tolerant Fallback**: PostgreSQL `pg_trgm` extension + `GIN` trigram index (`products_title_trgm_gin_idx` with `gin_trgm_ops`). When full-text matching returns fewer than 3 results, the engine runs a hybrid trigram similarity fallback (`q <% title` / `word_similarity`), allowing queries like `"bycycle"` to find `"Campus Bicycle"`.
+- **Composite Filter Indexes**: `("status", "categoryId", "price")` and `("status", "publishedAt")` optimize public feed filtering (`ACTIVE` / `RESERVED` only, `deletedAt IS NULL`) with deterministic UUID `id` tie-breakers across paginated pages.
+- **Autocomplete & Popular Terms**: `GET /api/search/suggest?q=` merges category matches, Redis `search:popular` sorted-set matches, and listing title prefix/trigram matches (max 8, min 2 chars). Valid executed searches (> 0 results, non-PII, per-IP 60s anti-spam guard) increment `search:popular` (`ZINCRBY`).
+
+### Cache Keys, TTLs & Invalidation Rules
+All keys are namespaced under `campusx:<NODE_ENV>:`. Redis calls **fail open** to PostgreSQL on outage (`enableOfflineQueue: false`, warning logged, zero request failures).
+
+| Logical Key Pattern | TTL | Stampede / Protection | Invalidation Trigger |
+|:---|---:|:---|:---|
+| `categories:all` | `3600s` (1h) | `getOrSet` + `NX` lock + singleflight | Category seed/change |
+| `products:version` | Persistent | Atomic `INCR` counter | Create, update, publish, status/moderation change, delete, image add/reorder/delete, expiry cron, seller profile/status change |
+| `products:list:v{ver}:{sha256(params)}` | `60s` | Version-bumped + `NX` lock | Instant logical invalidation via `products:version` bump (no `KEYS`/mass deletes) |
+| `products:detail:{productId}` | `30s` | Public `ACTIVE`/`RESERVED` non-owner views only (`viewCount` increments directly in Postgres, never cached; private statuses & owner/mod views bypass cache) | `DEL products:detail:{productId}` on product/image edit, status/moderation change, or delete |
+| `search:suggest:{sha256(q)}` | `60s` | `getOrSet` + `NX` lock | `delByPrefix('search:suggest:')` via cursor `SCAN` on listing/image mutations |
+| `search:popular` | Bounded sorted set (top 200) | Per-IP + term `60s` `SET NX` anti-spam & `total > 0` check | Auto-trimmed via `ZREMRANGEBYRANK` |
+| `search:popular:top10` | `300s` (5m) | `getOrSet` | Natural TTL expiry |
+| `auth:user:{userId}` | `60s` | Caches only `{ id, role, isActive, isVerifiedStudent }` (never `passwordHash`) | Immediate `DEL` on admin role update, user deactivation (`PATCH /api/admin/users/:id/status`), verification confirmation, `fix:college-emails`, and profile/avatar updates |
+| `rl:{prefix}:{ip}` | Window (`60s`–`900s`) | `rate-limit-redis` shared across app instances; `MemoryStore` fallback | Sliding window expiration |
+
+> **URL Lifetime Safety Check**: `SIGNED_URL_EXPIRY_SECONDS` (`900s` default) always exceeds max product cache TTL (`60s`) by a wide margin; server boot logs a warning if `SIGNED_URL_EXPIRY_SECONDS <= maxProductCacheTtl + 60`.
+
+### Search, Filter & Sort Query Parameters (`GET /api/products`)
+
+| Parameter | Type / Allowed Values | Default | Description |
+|:---|:---|:---|:---|
+| `q` | string (1–100 chars) | `""` | Keyword search (weighted FT + `pg_trgm` typo fallback) |
+| `categoryId` / `category` | UUID / slug | — | Filter by category UUID or slug (e.g. `books`, `electronics`) |
+| `minPrice`, `maxPrice` | number `>= 0` | — | Inclusive price bounds (validated `minPrice <= maxPrice`) |
+| `condition` | `NEW,LIKE_NEW,GOOD,FAIR,USED` | — | Single condition or comma-separated list |
+| `availability` | `available \| reserved \| all` | `all` | `available` (`ACTIVE` only), `reserved` (`RESERVED` only), `all` (`ACTIVE`+`RESERVED`) |
+| `isNegotiable` | `true \| false` | — | Filter negotiable vs fixed-price listings |
+| `verifiedSeller` | `true \| false` | `false` | Restrict results to verified (`@chitkara.edu.in`) student sellers |
+| `sort` | `newest \| price_asc \| price_desc \| popularity \| relevance` | `newest` (`relevance` when `q` present) | Deterministic ordering with UUID `id` tie-breaker (`relevance` requires `q`) |
+| `page`, `limit` | int (`limit` max `50`) | `1`, `12` | Returns `{ products, pagination: { page, limit, total, totalPages, hasNext } }` |
+
+Additional search endpoints:
+- `GET /api/search/suggest?q=<2-50 chars>` — Returns up to 8 autocomplete suggestions (`category`, `popular`, `listing`), cached `60s`, rate-limited.
+- `GET /api/search/popular` (alias `/api/search/suggest/popular`) — Returns top 10 popular search terms from Redis sorted set `search:popular`, cached `300s`.
+
+### 5,000-Product Search Benchmark (`npm run seed:bench`, Dev Only)
+- **Dataset**: 5,000 idempotent listings seeded via `cd server && npm run seed:bench` (clean up with `npm run seed:bench -- --clean`).
+- **Median HTTP Search Latency (15 queries across 5,000 rows)**:
+  - **Cache MISS (PostgreSQL)**: `35.78 ms`
+  - **Cache HIT (Redis)**: `10.66 ms` (~3.4x faster)
+- **PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` Plan Confirmation**:
+  - `Bitmap Index Scan on "products_searchVector_gin_idx"` (`shared hit=5`, **Execution Time: `0.405 ms`** after `VACUUM ANALYZE`)
+  - Trigram typo index `"products_title_trgm_gin_idx"` (`gin_trgm_ops`) confirmed via `Bitmap Index Scan` on `<%` operator.
 
 ---
 
