@@ -63,6 +63,22 @@ const config = {
     cdnBaseUrl: (process.env.CDN_BASE_URL || '').replace(/\/+$/, ''),
     signedUrlExpirySeconds: parseInt(process.env.SIGNED_URL_EXPIRY_SECONDS || '900', 10),
   },
+  redis: {
+    url:
+      process.env.REDIS_URL ||
+      (process.env.REDIS_PASSWORD
+        ? `redis://:${encodeURIComponent(process.env.REDIS_PASSWORD)}@127.0.0.1:6379`
+        : 'redis://127.0.0.1:6379'),
+    password: process.env.REDIS_PASSWORD || '',
+  },
+  cache: {
+    defaultTtlSeconds: parseInt(process.env.CACHE_DEFAULT_TTL_SECONDS || '60', 10),
+    authTtlSeconds: parseInt(process.env.AUTH_CACHE_TTL_SECONDS || '60', 10),
+    categoriesTtlSeconds: parseInt(process.env.CATEGORIES_CACHE_TTL_SECONDS || '3600', 10),
+    popularTtlSeconds: parseInt(process.env.POPULAR_CACHE_TTL_SECONDS || '300', 10),
+    suggestTtlSeconds: parseInt(process.env.SUGGEST_CACHE_TTL_SECONDS || '60', 10),
+    productDetailTtlSeconds: parseInt(process.env.PRODUCT_DETAIL_CACHE_TTL_SECONDS || '30', 10),
+  },
 };
 
 module.exports = config;

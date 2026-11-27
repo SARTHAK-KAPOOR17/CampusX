@@ -2,8 +2,12 @@
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const { MemoryStore } = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
 const express = require('express');
 const config = require('../config');
+const cache = require('../services/cache');
+const logger = require('../utils/logger');
 const { errorResponse } = require('../utils/response');
 
 /**
@@ -39,50 +43,127 @@ const xssProtectionMiddleware = (req, res, next) => {
 };
 
 /**
+ * Express-rate-limit Store backed by RedisStore for multi-instance sharing,
+ * failing open automatically to an internal MemoryStore whenever Redis is unavailable.
+ */
+class ResilientRedisRateLimitStore {
+  constructor({ prefix }) {
+    this.localKeys = false;
+    this.prefix = `${cache.namespacePrefix()}rl:${prefix}:`;
+    this.options = null;
+    this.memoryStore = new MemoryStore();
+    this.redisStore = null;
+  }
+
+  init(options) {
+    this.options = options;
+    this.memoryStore.init(options);
+  }
+
+  _ensureRedisStore() {
+    if (!cache.isReady()) return null;
+    if (!this.redisStore) {
+      this.redisStore = new RedisStore({
+        prefix: this.prefix,
+        sendCommand: async (...args) => {
+          const client = cache.getClient();
+          if (!client || client.status !== 'ready') {
+            throw new Error('Redis unavailable for rate limiting');
+          }
+          return client.call(...args);
+        },
+      });
+      if (this.options && typeof this.redisStore.init === 'function') {
+        this.redisStore.init(this.options);
+      }
+    }
+    return this.redisStore;
+  }
+
+  async increment(key) {
+    const store = this._ensureRedisStore();
+    if (!store) {
+      return this.memoryStore.increment(key);
+    }
+    try {
+      return await store.increment(key);
+    } catch (err) {
+      this.redisStore = null;
+      logger.warn({ err: err.message }, 'Redis rate limit store failed; falling back to memory');
+      return this.memoryStore.increment(key);
+    }
+  }
+
+  async decrement(key) {
+    const store = this._ensureRedisStore();
+    if (!store) {
+      return this.memoryStore.decrement(key);
+    }
+    try {
+      return await store.decrement(key);
+    } catch {
+      return this.memoryStore.decrement(key);
+    }
+  }
+
+  async resetKey(key) {
+    const store = this._ensureRedisStore();
+    await Promise.allSettled([
+      this.memoryStore.resetKey(key),
+      store ? store.resetKey(key) : Promise.resolve(),
+    ]);
+  }
+}
+
+const createRateLimiter = ({ windowMs, max, prefix, message, skipInTest = true }) =>
+  rateLimit({
+    windowMs,
+    max: skipInTest && config.env === 'test' ? 1000 : max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    passOnStoreError: true,
+    store: new ResilientRedisRateLimitStore({ prefix }),
+    handler: (req, res) => errorResponse(res, message, 429),
+  });
+
+/**
  * General API rate limiter
  */
-const limiter = rateLimit({
+const limiter = createRateLimiter({
   windowMs: config.rateLimit.windowMs,
-  max: config.env === 'test' ? 1000 : config.rateLimit.max,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    return errorResponse(res, 'Too many requests from this IP, please try again later.', 429);
-  },
+  max: config.rateLimit.max,
+  prefix: 'general',
+  message: 'Too many requests from this IP, please try again later.',
 });
 
 /**
  * Stricter rate limiter for sensitive auth endpoints (/signup, /login, /refresh)
  */
-const authLimiter = rateLimit({
+const authLimiter = createRateLimiter({
   windowMs: config.rateLimit.authWindowMs,
-  max: config.env === 'test' ? 1000 : config.rateLimit.authMax,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    return errorResponse(
-      res,
-      'Too many authentication attempts from this IP, please try again later.',
-      429
-    );
-  },
+  max: config.rateLimit.authMax,
+  prefix: 'auth',
+  message: 'Too many authentication attempts from this IP, please try again later.',
 });
 
 /**
  * Stricter rate limiter for image upload endpoints
  */
-const uploadLimiter = rateLimit({
+const uploadLimiter = createRateLimiter({
   windowMs: config.rateLimit.uploadWindowMs,
-  max: config.env === 'test' ? 1000 : config.rateLimit.uploadMax,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    return errorResponse(
-      res,
-      'Too many file upload requests from this IP, please try again later.',
-      429
-    );
-  },
+  max: config.rateLimit.uploadMax,
+  prefix: 'upload',
+  message: 'Too many file upload requests from this IP, please try again later.',
+});
+
+/**
+ * Search/autocomplete rate limiter (debounce-friendly)
+ */
+const searchLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  prefix: 'search',
+  message: 'Too many search requests from this IP, please slow down.',
 });
 
 /**
@@ -105,31 +186,25 @@ const corsOptions = {
  * Apply all security middleware to the Express app
  */
 const setupSecurityMiddleware = (app) => {
-  // 1. Helmet headers (allow cross-origin static avatar loading from client origin)
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     })
   );
-
-  // 2. CORS configuration
   app.use(cors(corsOptions));
-
-  // 3. Body size limits
   app.use(express.json({ limit: config.bodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: config.bodyLimit }));
-
-  // 4. XSS sanitization
   app.use(xssProtectionMiddleware);
-
-  // 5. Rate limiting on API routes
   app.use('/api', limiter);
 };
 
 module.exports = {
   setupSecurityMiddleware,
+  xssProtectionMiddleware,
+  ResilientRedisRateLimitStore,
+  createRateLimiter,
   limiter,
   authLimiter,
   uploadLimiter,
-  xssProtectionMiddleware,
+  searchLimiter,
 };

@@ -12,6 +12,7 @@
     "seed": "node prisma/seed.js",
     "migrate:avatars": "node prisma/migrateAvatars.js",
     "fix:college-emails": "node prisma/fixCollegeEmails.js",
+    "seed:bench": "node prisma/seedBench.js",
     "test": "cross-env NODE_ENV=test jest --runInBand --detectOpenHandles --forceExit",
     "lint": "node -e \"console.log('Server lint check passed')\"",
     "build": "npm run prisma:generate"
@@ -31,6 +32,7 @@
     "express-rate-limit": "^7.5.0",
     "express-validator": "^7.2.1",
     "helmet": "^8.0.0",
+    "ioredis": "^6.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.5.0",
     "node-cron": "^4.6.0",
@@ -38,6 +40,7 @@
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
     "pino-pretty": "^13.0.0",
+    "rate-limit-redis": "^4.3.1",
     "sharp": "^0.35.5"
   },
   "devDependencies": {

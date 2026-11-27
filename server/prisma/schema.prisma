@@ -118,6 +118,7 @@ model Product {
   expiresAt    DateTime?
   soldAt       DateTime?
   deletedAt    DateTime?
+  searchVector Unsupported("tsvector")?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   images       ProductImage[]
@@ -127,6 +128,8 @@ model Product {
   @@index([status])
   @@index([price])
   @@index([createdAt])
+  @@index([status, categoryId, price])
+  @@index([status, publishedAt])
   @@map("products")
 }
 
