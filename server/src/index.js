@@ -4,6 +4,7 @@ const config = require('./config');
 const logger = require('./utils/logger');
 const { prisma, checkDbConnection } = require('./config/db');
 const { startExpiryCron } = require('./jobs/expireListings');
+const storage = require('./services/storage');
 
 const PORT = config.port;
 
@@ -15,6 +16,17 @@ const startServer = async () => {
       logger.info({ latencyMs: dbStatus.latencyMs }, 'Successfully connected to PostgreSQL via Prisma');
     } else {
       logger.warn({ error: dbStatus.error }, 'PostgreSQL connection unavailable at boot; running in offline/degraded mode');
+    }
+
+    // Ensure object storage bucket exists in dev or fail fast in production
+    try {
+      await storage.ensureStorageReady();
+    } catch (storageErr) {
+      if (config.env === 'production') {
+        logger.fatal({ err: storageErr }, 'Fatal: Object storage unreachable in production');
+        process.exit(1);
+      }
+      logger.warn({ err: storageErr.message }, 'Object storage initialization warning in dev');
     }
 
     const expiryCronTask = startExpiryCron();
