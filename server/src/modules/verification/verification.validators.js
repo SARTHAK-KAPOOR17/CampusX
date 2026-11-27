@@ -2,13 +2,8 @@
 const { body } = require('express-validator');
 
 const requestOtpValidation = [
-  body('collegeEmail')
-    .trim()
-    .notEmpty()
-    .withMessage('College email is required')
-    .isEmail()
-    .withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+  // Strict collegeEmail validation (trim, lowercase, local-part + exact domain match)
+  // is handled in verification.service.js so all invalid/disallowed emails return a consistent 400.
 ];
 
 const confirmOtpValidation = [

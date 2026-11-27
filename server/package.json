@@ -11,6 +11,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "seed": "node prisma/seed.js",
     "migrate:avatars": "node prisma/migrateAvatars.js",
+    "fix:college-emails": "node prisma/fixCollegeEmails.js",
     "test": "cross-env NODE_ENV=test jest --runInBand --detectOpenHandles --forceExit",
     "lint": "node -e \"console.log('Server lint check passed')\"",
     "build": "npm run prisma:generate"

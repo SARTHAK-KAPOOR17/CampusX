@@ -10,26 +10,60 @@ const { USER_PUBLIC_SELECT } = require('../auth/auth.service');
 const RESEND_COOLDOWN_MS = 60 * 1000;
 const MAX_REQUESTS_PER_HOUR = 5;
 const MAX_OTP_ATTEMPTS = 5;
+const COLLEGE_EMAIL_ERROR = 'Please use your college email ending with @chitkara.edu.in';
+const LOCAL_PART_REGEX = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i;
 
 const hashOtp = (otp) => {
   return crypto.createHash('sha256').update(String(otp)).digest('hex');
 };
 
-const extractDomain = (email) => {
-  const parts = email.split('@');
-  return parts.length === 2 ? parts[1].toLowerCase() : '';
-};
+/**
+ * Strictly validates and normalizes a college email against ALLOWED_COLLEGE_DOMAINS.
+ * Requires exact domain equality (no endsWith/contains/subdomain match).
+ */
+const validateAndNormalizeCollegeEmail = (
+  rawEmail,
+  allowedDomains = config.verification.allowedDomains
+) => {
+  if (typeof rawEmail !== 'string') {
+    return { valid: false, normalized: '', domain: '' };
+  }
 
-const isAllowedCollegeDomain = (domain) => {
-  return config.verification.allowedDomains.includes(domain);
+  const normalized = rawEmail.trim().toLowerCase();
+  if (!normalized || normalized.length > 254) {
+    return { valid: false, normalized, domain: '' };
+  }
+
+  const parts = normalized.split('@');
+  if (parts.length !== 2) {
+    return { valid: false, normalized, domain: '' };
+  }
+
+  const [localPart, domain] = parts;
+  if (
+    !localPart ||
+    localPart.length > 64 ||
+    /\s/.test(localPart) ||
+    !LOCAL_PART_REGEX.test(localPart) ||
+    localPart.startsWith('.') ||
+    localPart.endsWith('.') ||
+    localPart.includes('..')
+  ) {
+    return { valid: false, normalized, domain };
+  }
+
+  if (!domain || !allowedDomains.includes(domain)) {
+    return { valid: false, normalized, domain };
+  }
+
+  return { valid: true, normalized, domain };
 };
 
 /**
  * Generates and emails a 6-digit OTP to a valid college email.
  */
 const requestOtp = async ({ userId, collegeEmail }) => {
-  const normalizedCollegeEmail = collegeEmail.trim().toLowerCase();
-  const domain = extractDomain(normalizedCollegeEmail);
+  const { valid, normalized: normalizedCollegeEmail } = validateAndNormalizeCollegeEmail(collegeEmail);
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -44,17 +78,14 @@ const requestOtp = async ({ userId, collegeEmail }) => {
     throw new AppError('Your student account is already verified.', 400);
   }
 
-  if (!domain || !isAllowedCollegeDomain(domain)) {
-    throw new AppError(
-      `Email domain '${domain || 'unknown'}' is not in the allowed college domains list.`,
-      400
-    );
+  if (!valid) {
+    throw new AppError(COLLEGE_EMAIL_ERROR, 400);
   }
 
-  // Reject if this college email is already verified by another user
+  // Case-insensitive duplicate check: reject if verified by another user
   const verifiedByOther = await prisma.user.findFirst({
     where: {
-      collegeEmail: normalizedCollegeEmail,
+      collegeEmail: { equals: normalizedCollegeEmail, mode: 'insensitive' },
       id: { not: userId },
     },
     select: { id: true },
@@ -204,9 +235,11 @@ const confirmOtp = async ({ userId, otp }) => {
     );
   }
 
+  const normalizedOtpEmail = String(activeOtp.collegeEmail || '').trim().toLowerCase();
+
   const verifiedByOther = await prisma.user.findFirst({
     where: {
-      collegeEmail: activeOtp.collegeEmail,
+      collegeEmail: { equals: normalizedOtpEmail, mode: 'insensitive' },
       id: { not: userId },
     },
     select: { id: true },
@@ -227,7 +260,7 @@ const confirmOtp = async ({ userId, otp }) => {
       data: {
         isVerifiedStudent: true,
         verifiedAt: now,
-        collegeEmail: activeOtp.collegeEmail,
+        collegeEmail: normalizedOtpEmail,
       },
       select: USER_PUBLIC_SELECT,
     }),
@@ -261,4 +294,6 @@ module.exports = {
   confirmOtp,
   getStatus,
   hashOtp,
+  validateAndNormalizeCollegeEmail,
+  COLLEGE_EMAIL_ERROR,
 };

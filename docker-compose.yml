@@ -76,7 +76,7 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-CampusX Admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@campusx.edu}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@CampusX2026!}
-      ALLOWED_COLLEGE_DOMAINS: ${ALLOWED_COLLEGE_DOMAINS:-campusx.edu,university.edu,mit.edu,stanford.edu,iitd.ac.in}
+      ALLOWED_COLLEGE_DOMAINS: ${ALLOWED_COLLEGE_DOMAINS:-chitkara.edu.in}
       OTP_EXPIRY_MINUTES: ${OTP_EXPIRY_MINUTES:-10}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
