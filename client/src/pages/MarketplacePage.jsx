@@ -5,6 +5,7 @@ import { PackageOpen, PlusCircle, Tag, ChevronLeft, ChevronRight, ShoppingBag } 
 import { categoriesApi, productsApi } from '../services/api';
 import { ConditionBadge, ListingStatusBadge } from '../components/ListingBadges';
 import { VerifiedBadge } from '../components/VerifiedBadge';
+import { SmartImage } from '../components/SmartImage';
 
 export const MarketplacePage = () => {
   const [categories, setCategories] = useState([]);
@@ -138,12 +139,18 @@ export const MarketplacePage = () => {
                 className="group bg-slate-800/80 hover:bg-slate-800 rounded-2xl border border-slate-700/80 hover:border-blue-500/50 overflow-hidden transition flex flex-col justify-between shadow-lg"
               >
                 <div>
-                  {/* Placeholder Image Block (real uploads on Day 5) */}
-                  <div className="h-44 bg-gradient-to-br from-slate-700/50 via-slate-800 to-slate-900 flex flex-col items-center justify-center relative border-b border-slate-700/60">
-                    <ShoppingBag className="w-10 h-10 text-slate-500 group-hover:text-blue-400 transition" />
-                    <span className="text-[11px] text-slate-500 mt-2">Image coming Day 5</span>
+                  {/* Fixed-aspect Product Thumbnail with Blur Placeholder & Lazy Loading */}
+                  <div className="aspect-[4/3] w-full bg-gradient-to-br from-slate-700/50 via-slate-800 to-slate-900 relative border-b border-slate-700/60 overflow-hidden">
+                    <SmartImage
+                      src={product.primaryImage?.thumbUrl}
+                      blurDataUrl={product.primaryImage?.blurDataUrl}
+                      alt={product.title}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onUrlExpired={() => fetchProducts(pagination.page, selectedCategoryId)}
+                    />
                     {product.status === 'RESERVED' && (
-                      <div className="absolute top-3 right-3">
+                      <div className="absolute top-3 right-3 z-10">
                         <ListingStatusBadge status="RESERVED" />
                       </div>
                     )}

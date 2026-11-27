@@ -1,5 +1,5 @@
 // client/src/pages/ProductDetailPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -11,40 +11,56 @@ import {
   Star,
   AlertCircle,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Maximize2,
 } from 'lucide-react';
 import { productsApi, resolveAssetUrl } from '../services/api';
 import { ConditionBadge, ListingStatusBadge } from '../components/ListingBadges';
 import { VerifiedBadge } from '../components/VerifiedBadge';
+import { SmartImage } from '../components/SmartImage';
 
 export const ProductDetailPage = () => {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  const loadProduct = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
+    setError('');
+    try {
+      const res = await productsApi.getById(id);
+      setProduct(res?.data?.product || null);
+      setActiveIndex(0);
+    } catch (err) {
+      setError(err.message || 'Listing could not be loaded.');
+    } finally {
+      if (showSpinner) setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError('');
+    loadProduct(true);
+  }, [loadProduct]);
 
-    productsApi
-      .getById(id)
-      .then((res) => {
-        if (!active) return;
-        setProduct(res?.data?.product || null);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setError(err.message || 'Listing could not be loaded.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+  const images = Array.isArray(product?.images) ? product.images : [];
+  const safeIndex = activeIndex < images.length ? activeIndex : 0;
+  const activeImage = images[safeIndex] || null;
 
-    return () => {
-      active = false;
+  useEffect(() => {
+    if (!lightboxOpen || images.length === 0) return;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') setLightboxOpen(false);
+      if (e.key === 'ArrowRight') setActiveIndex((prev) => (prev + 1) % images.length);
+      if (e.key === 'ArrowLeft') setActiveIndex((prev) => (prev - 1 + images.length) % images.length);
     };
-  }, [id]);
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [lightboxOpen, images.length]);
 
   if (loading) {
     return (
@@ -85,11 +101,86 @@ export const ProductDetailPage = () => {
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Placeholder Image & Details */}
+        {/* Left: Product Gallery & Details */}
         <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur rounded-2xl border border-slate-700/80 overflow-hidden shadow-xl">
-          <div className="h-72 sm:h-80 bg-gradient-to-br from-slate-700/40 via-slate-800 to-slate-900 flex flex-col items-center justify-center border-b border-slate-700/60">
-            <ShoppingBag className="w-16 h-16 text-slate-500" />
-            <span className="text-xs text-slate-500 mt-3">Product photos coming on Day 5</span>
+          <div className="bg-slate-900/80 border-b border-slate-700/60">
+            <div className="relative aspect-[16/10] w-full bg-gradient-to-br from-slate-700/40 via-slate-800 to-slate-900 overflow-hidden">
+              {activeImage ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxOpen(true)}
+                    className="w-full h-full block group focus:outline-none"
+                    aria-label="Open full-size image lightbox"
+                  >
+                    <SmartImage
+                      src={activeImage.mediumUrl || activeImage.largeUrl}
+                      blurDataUrl={activeImage.blurDataUrl}
+                      alt={`${product.title} photo ${safeIndex + 1}`}
+                      loading="eager"
+                      className="w-full h-full object-contain bg-slate-950"
+                      onUrlExpired={() => loadProduct(false)}
+                    />
+                    <span className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950/80 text-xs text-slate-200 border border-slate-700 opacity-85 group-hover:opacity-100 transition">
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      Zoom
+                    </span>
+                  </button>
+
+                  {images.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Previous photo"
+                        onClick={() => setActiveIndex((prev) => (prev - 1 + images.length) % images.length)}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-slate-950/80 hover:bg-slate-900 text-white border border-slate-700 flex items-center justify-center transition"
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Next photo"
+                        onClick={() => setActiveIndex((prev) => (prev + 1) % images.length)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-slate-950/80 hover:bg-slate-900 text-white border border-slate-700 flex items-center justify-center transition"
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center">
+                  <ShoppingBag className="w-16 h-16 text-slate-500" />
+                  <span className="text-xs text-slate-500 mt-3">No photos uploaded</span>
+                </div>
+              )}
+            </div>
+
+            {images.length > 1 && (
+              <div className="flex items-center gap-2 p-3 overflow-x-auto bg-slate-900/90 border-t border-slate-800">
+                {images.map((img, idx) => (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => setActiveIndex(idx)}
+                    aria-label={`View photo ${idx + 1}`}
+                    className={`w-16 h-16 shrink-0 rounded-lg overflow-hidden border-2 transition ${
+                      idx === safeIndex
+                        ? 'border-blue-500 ring-2 ring-blue-500/30'
+                        : 'border-slate-700 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <SmartImage
+                      src={img.thumbUrl}
+                      blurDataUrl={img.blurDataUrl}
+                      alt={`${product.title} thumbnail ${idx + 1}`}
+                      loading="lazy"
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="p-6 sm:p-8 space-y-6">
@@ -184,11 +275,14 @@ export const ProductDetailPage = () => {
               className="flex items-center gap-3.5 p-3 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-slate-700/60 transition group"
             >
               {sellerAvatarUrl ? (
-                <img
-                  src={sellerAvatarUrl}
-                  alt={product.seller?.name}
-                  className="w-12 h-12 rounded-xl object-cover border border-slate-600 shrink-0"
-                />
+                <div className="w-12 h-12 rounded-xl overflow-hidden border border-slate-600 shrink-0">
+                  <SmartImage
+                    src={sellerAvatarUrl}
+                    alt={product.seller?.name}
+                    className="w-12 h-12 object-cover"
+                    onUrlExpired={() => loadProduct(false)}
+                  />
+                </div>
               ) : (
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-bold text-lg shrink-0">
                   {product.seller?.name?.charAt(0)?.toUpperCase() || 'U'}
@@ -211,6 +305,62 @@ export const ProductDetailPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Full-Screen Lightbox Modal */}
+      {lightboxOpen && activeImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full-size photo lightbox"
+          className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-sm flex flex-col items-center justify-center p-4"
+          onClick={() => setLightboxOpen(false)}
+        >
+          <div
+            className="relative max-w-5xl w-full max-h-[85vh] flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={activeImage.largeUrl || activeImage.mediumUrl}
+              alt={`${product.title} full size ${safeIndex + 1}`}
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
+            />
+
+            <button
+              type="button"
+              aria-label="Close lightbox"
+              onClick={() => setLightboxOpen(false)}
+              className="absolute top-3 right-3 w-10 h-10 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700 flex items-center justify-center transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {images.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous lightbox photo"
+                  onClick={() => setActiveIndex((prev) => (prev - 1 + images.length) % images.length)}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700 flex items-center justify-center transition"
+                >
+                  <ChevronLeft className="w-6 h-6" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next lightbox photo"
+                  onClick={() => setActiveIndex((prev) => (prev + 1) % images.length)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700 flex items-center justify-center transition"
+                >
+                  <ChevronRight className="w-6 h-6" />
+                </button>
+              </>
+            )}
+          </div>
+
+          <p className="mt-3 text-xs font-mono text-slate-300">
+            {safeIndex + 1} / {images.length} — Use arrow keys or Esc to close
+          </p>
+        </div>
+      )}
     </div>
   );
 };

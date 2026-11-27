@@ -37,7 +37,7 @@ const authenticate = asyncHandler(async (req, res, next) => {
       collegeEmail: true,
       isVerifiedStudent: true,
       verifiedAt: true,
-      profilePictureUrl: true,
+      avatarKey: true,
       createdAt: true,
       updatedAt: true,
     },

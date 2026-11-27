@@ -19,6 +19,8 @@ const config = {
     max: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
     authWindowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000', 10),
     authMax: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '20', 10),
+    uploadWindowMs: parseInt(process.env.UPLOAD_RATE_LIMIT_WINDOW_MS || '900000', 10),
+    uploadMax: parseInt(process.env.UPLOAD_RATE_LIMIT_MAX || '30', 10),
   },
   bodyLimit: process.env.BODY_LIMIT || '10mb',
   logLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'silent' : 'info'),
@@ -52,6 +54,17 @@ const config = {
   },
   cron: {
     enabled: process.env.ENABLE_CRON !== 'false' && process.env.NODE_ENV !== 'test',
+  },
+  storage: {
+    endpoint: process.env.STORAGE_ENDPOINT || 'http://localhost:9000',
+    publicEndpoint: process.env.STORAGE_PUBLIC_ENDPOINT || '',
+    region: process.env.STORAGE_REGION || 'us-east-1',
+    bucket: process.env.STORAGE_BUCKET || 'campusx-media',
+    accessKey: process.env.STORAGE_ACCESS_KEY || '',
+    secretKey: process.env.STORAGE_SECRET_KEY || '',
+    forcePathStyle: process.env.STORAGE_FORCE_PATH_STYLE === 'true',
+    cdnBaseUrl: (process.env.CDN_BASE_URL || '').replace(/\/+$/, ''),
+    signedUrlExpirySeconds: parseInt(process.env.SIGNED_URL_EXPIRY_SECONDS || '900', 10),
   },
 };
 

@@ -25,6 +25,31 @@ services:
       - campusx-network
 
   # ========================================================
+  # Object Storage: MinIO (S3-Compatible)
+  # ========================================================
+  minio:
+    image: pgsty/minio:latest
+    container_name: campusx-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-campusx_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-campusx_minio_secret_2026}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - campusx-network
+
+  # ========================================================
   # Backend Server: Node.js + Express (Modular Monolith)
   # ========================================================
   server:
@@ -60,12 +85,21 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-CampusX <noreply@campusx.edu>}
       LISTING_EXPIRY_DAYS: ${LISTING_EXPIRY_DAYS:-60}
       ENABLE_CRON: ${ENABLE_CRON:-true}
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://localhost:9000}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-campusx-media}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-campusx_minio}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-campusx_minio_secret_2026}
+      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
+      SIGNED_URL_EXPIRY_SECONDS: ${SIGNED_URL_EXPIRY_SECONDS:-900}
     ports:
       - "5000:5000"
-    volumes:
-      - uploads_data:/app/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000/api/health || exit 1"]
@@ -130,7 +164,7 @@ services:
 volumes:
   postgres_data:
     driver: local
-  uploads_data:
+  minio_data:
     driver: local
 
 networks:

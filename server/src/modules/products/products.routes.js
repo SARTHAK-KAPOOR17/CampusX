@@ -1,11 +1,14 @@
 // server/src/modules/products/products.routes.js
 const express = require('express');
+const multer = require('multer');
 const validate = require('../../middleware/validator');
 const {
   authenticate,
   optionalAuthenticate,
   requireVerifiedStudent,
 } = require('../../middleware/auth');
+const { uploadLimiter } = require('../../middleware/security');
+const { MAX_IMAGE_SIZE_BYTES } = require('../../services/images');
 const {
   createProductValidation,
   updateProductValidation,
@@ -15,8 +18,22 @@ const {
   listMyProductsValidation,
 } = require('./products.validators');
 const productsController = require('./products.controller');
+const {
+  productImagesParamValidation,
+  deleteProductImageValidation,
+  reorderProductImagesValidation,
+} = require('../product-images/productImages.validators');
+const productImagesController = require('../product-images/productImages.controller');
 
 const router = express.Router();
+
+const uploadProductImagesMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_IMAGE_SIZE_BYTES, // 5MB max per file
+    files: 6, // max 6 files per request
+  },
+});
 
 // Seller's own listings (must be registered BEFORE /:id)
 router.get(
@@ -64,6 +81,30 @@ router.post(
   authenticate,
   validate(sellerStatusValidation),
   productsController.updateSellerStatus
+);
+
+// Product Images (owner only, stricter upload rate limit)
+router.post(
+  '/:id/images',
+  authenticate,
+  uploadLimiter,
+  validate(productImagesParamValidation),
+  uploadProductImagesMulter.array('images', 6),
+  productImagesController.uploadImages
+);
+
+router.patch(
+  '/:id/images/order',
+  authenticate,
+  validate(reorderProductImagesValidation),
+  productImagesController.reorderImages
+);
+
+router.delete(
+  '/:id/images/:imageId',
+  authenticate,
+  validate(deleteProductImageValidation),
+  productImagesController.deleteImage
 );
 
 // Owner or ADMIN delete

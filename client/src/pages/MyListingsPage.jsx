@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { productsApi } from '../services/api';
 import { ConditionBadge, ListingStatusBadge } from '../components/ListingBadges';
+import { SmartImage } from '../components/SmartImage';
 
 const STATUS_TABS = ['', 'ACTIVE', 'DRAFT', 'RESERVED', 'SOLD', 'EXPIRED', 'UNDER_REVIEW'];
 
@@ -158,28 +159,44 @@ export const MyListingsPage = () => {
                 key={item.id}
                 className="p-5 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
               >
-                <div className="space-y-1.5 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <ListingStatusBadge status={item.status} />
-                    <ConditionBadge condition={item.condition} />
-                    {item.category && (
-                      <span className="text-xs text-slate-400">{item.category.name}</span>
-                    )}
-                  </div>
-
+                <div className="flex items-start gap-4 min-w-0">
                   <Link
                     to={`/products/${item.id}`}
-                    className="block font-bold text-lg text-white hover:text-blue-300 transition truncate"
+                    className="w-20 h-16 rounded-xl overflow-hidden border border-slate-700 shrink-0 bg-slate-900"
                   >
-                    {item.title}
+                    <SmartImage
+                      src={item.primaryImage?.thumbUrl}
+                      blurDataUrl={item.primaryImage?.blurDataUrl}
+                      alt={item.title}
+                      loading="lazy"
+                      className="w-full h-full object-cover"
+                      onUrlExpired={() => loadMine(statusFilter)}
+                    />
                   </Link>
 
-                  <p className="text-sm text-slate-300">
-                    {item.price !== null
-                      ? `₹${Number(item.price).toLocaleString('en-IN')}`
-                      : 'Draft (no price set)'}{' '}
-                    <span className="text-xs text-slate-500 ml-2">• {item.viewCount} views</span>
-                  </p>
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ListingStatusBadge status={item.status} />
+                      <ConditionBadge condition={item.condition} />
+                      {item.category && (
+                        <span className="text-xs text-slate-400">{item.category.name}</span>
+                      )}
+                    </div>
+
+                    <Link
+                      to={`/products/${item.id}`}
+                      className="block font-bold text-lg text-white hover:text-blue-300 transition truncate"
+                    >
+                      {item.title}
+                    </Link>
+
+                    <p className="text-sm text-slate-300">
+                      {item.price !== null
+                        ? `₹${Number(item.price).toLocaleString('en-IN')}`
+                        : 'Draft (no price set)'}{' '}
+                      <span className="text-xs text-slate-500 ml-2">• {item.viewCount} views</span>
+                    </p>
+                  </div>
                 </div>
 
                 {/* Actions */}

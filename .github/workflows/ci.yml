@@ -51,6 +51,15 @@ jobs:
       EMAIL_FROM: CampusX <noreply@campusx.edu>
       LISTING_EXPIRY_DAYS: 60
       ENABLE_CRON: 'false'
+      STORAGE_ENDPOINT: http://localhost:9000
+      STORAGE_PUBLIC_ENDPOINT: http://localhost:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: campusx-media-test
+      STORAGE_ACCESS_KEY: campusx_minio_test
+      STORAGE_SECRET_KEY: campusx_minio_secret_test
+      STORAGE_FORCE_PATH_STYLE: 'true'
+      CDN_BASE_URL: ''
+      SIGNED_URL_EXPIRY_SECONDS: 900
 
     steps:
       - name: Checkout Repository

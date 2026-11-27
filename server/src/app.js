@@ -1,5 +1,4 @@
 // server/src/app.js
-const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { setupSecurityMiddleware } = require('./middleware/security');
@@ -20,9 +19,6 @@ setupSecurityMiddleware(app);
 
 // Parse HTTP-only cookies for refresh token flows
 app.use(cookieParser());
-
-// Serve uploaded avatars statically (TODO: Day 5 will migrate to cloud storage)
-app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
 
 // Mount routes
 app.use('/api/health', healthRoutes);

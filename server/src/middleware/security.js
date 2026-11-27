@@ -69,6 +69,23 @@ const authLimiter = rateLimit({
 });
 
 /**
+ * Stricter rate limiter for image upload endpoints
+ */
+const uploadLimiter = rateLimit({
+  windowMs: config.rateLimit.uploadWindowMs,
+  max: config.env === 'test' ? 1000 : config.rateLimit.uploadMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    return errorResponse(
+      res,
+      'Too many file upload requests from this IP, please try again later.',
+      429
+    );
+  },
+});
+
+/**
  * CORS options with dynamic whitelist verification
  */
 const corsOptions = {
@@ -113,5 +130,6 @@ module.exports = {
   setupSecurityMiddleware,
   limiter,
   authLimiter,
+  uploadLimiter,
   xssProtectionMiddleware,
 };

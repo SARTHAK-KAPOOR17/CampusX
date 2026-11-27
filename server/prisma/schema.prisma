@@ -42,7 +42,7 @@ model User {
   collegeEmail      String?        @unique
   isVerifiedStudent Boolean        @default(false)
   verifiedAt        DateTime?
-  profilePictureUrl String?
+  avatarKey         String?
   course            String?
   branch            String?
   year              Int?
@@ -101,25 +101,26 @@ model Category {
 }
 
 model Product {
-  id           String        @id @default(uuid())
+  id           String         @id @default(uuid())
   sellerId     String
-  seller       User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  seller       User           @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   categoryId   String?
-  category     Category?     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  title        String        @db.VarChar(120)
-  description  String?       @db.VarChar(2000)
-  price        Decimal?      @db.Decimal(10, 2)
+  category     Category?      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  title        String         @db.VarChar(120)
+  description  String?        @db.VarChar(2000)
+  price        Decimal?       @db.Decimal(10, 2)
   condition    Condition?
-  status       ListingStatus @default(DRAFT)
-  isNegotiable Boolean       @default(true)
-  viewCount    Int           @default(0)
-  tags         String[]      @default([])
+  status       ListingStatus  @default(DRAFT)
+  isNegotiable Boolean        @default(true)
+  viewCount    Int            @default(0)
+  tags         String[]       @default([])
   publishedAt  DateTime?
   expiresAt    DateTime?
   soldAt       DateTime?
   deletedAt    DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  images       ProductImage[]
 
   @@index([sellerId])
   @@index([categoryId])
@@ -127,4 +128,21 @@ model Product {
   @@index([price])
   @@index([createdAt])
   @@map("products")
+}
+
+model ProductImage {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storageKey  String
+  position    Int      @default(0)
+  isPrimary   Boolean  @default(false)
+  width       Int
+  height      Int
+  sizeBytes   Int
+  blurDataUrl String
+  createdAt   DateTime @default(now())
+
+  @@index([productId])
+  @@map("product_images")
 }

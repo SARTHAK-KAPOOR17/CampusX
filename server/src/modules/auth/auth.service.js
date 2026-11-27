@@ -6,6 +6,7 @@ const config = require('../../config');
 const { prisma } = require('../../config/db');
 const logger = require('../../utils/logger');
 const AppError = require('../../utils/AppError');
+const { formatUserWithAvatar } = require('../../utils/userFormatter');
 
 const USER_PUBLIC_SELECT = {
   id: true,
@@ -16,7 +17,7 @@ const USER_PUBLIC_SELECT = {
   collegeEmail: true,
   isVerifiedStudent: true,
   verifiedAt: true,
-  profilePictureUrl: true,
+  avatarKey: true,
   course: true,
   branch: true,
   year: true,
@@ -99,7 +100,7 @@ const signup = async ({ name, email, password, userAgent = null, ip = null }) =>
   });
 
   return {
-    user,
+    user: await formatUserWithAvatar(user),
     accessToken,
     refreshToken: rawRefreshToken,
   };
@@ -142,7 +143,7 @@ const login = async ({ email, password, userAgent = null, ip = null }) => {
   });
 
   return {
-    user: sanitizeUser(user),
+    user: await formatUserWithAvatar(sanitizeUser(user)),
     accessToken,
     refreshToken: rawRefreshToken,
   };
@@ -220,7 +221,7 @@ const refresh = async ({ rawRefreshToken, userAgent = null, ip = null }) => {
   ]);
 
   return {
-    user: sanitizeUser(existingToken.user),
+    user: await formatUserWithAvatar(sanitizeUser(existingToken.user)),
     accessToken: newAccessToken,
     refreshToken: newRawRefreshToken,
   };
@@ -275,7 +276,7 @@ const getMe = async (userId) => {
     throw new AppError('User not found.', 404);
   }
 
-  return user;
+  return formatUserWithAvatar(user);
 };
 
 module.exports = {

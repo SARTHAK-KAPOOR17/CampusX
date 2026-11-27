@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { categoriesApi, productsApi } from '../services/api';
 import { useAuthStore } from '../store';
+import { ProductImageUploader } from '../components/ProductImageUploader';
 
 const CONDITIONS = [
   { value: 'NEW', label: 'New' },
@@ -35,6 +36,10 @@ export const SellPage = () => {
   const [isNegotiable, setIsNegotiable] = useState(true);
   const [tagsInput, setTagsInput] = useState('');
   const [existingStatus, setExistingStatus] = useState('DRAFT');
+  const [existingImages, setExistingImages] = useState([]);
+  const [queuedFiles, setQueuedFiles] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const [imageBusy, setImageBusy] = useState(false);
 
   const [loadingInitial, setLoadingInitial] = useState(isEditMode);
   const [submitting, setSubmitting] = useState(false);
@@ -63,6 +68,7 @@ export const SellPage = () => {
         setIsNegotiable(Boolean(p.isNegotiable));
         setTagsInput(Array.isArray(p.tags) ? p.tags.join(', ') : '');
         setExistingStatus(p.status);
+        setExistingImages(Array.isArray(p.images) ? p.images : []);
       })
       .catch((err) => setError(err.message || 'Could not load listing.'))
       .finally(() => setLoadingInitial(false));
@@ -125,8 +131,66 @@ export const SellPage = () => {
       if (price === '') return 'Price is required to publish.';
       if (!categoryId) return 'Category is required to publish.';
       if (!condition) return 'Condition is required to publish.';
+      const imageCount = isEditMode ? existingImages.length : queuedFiles.length;
+      if (imageCount === 0) return 'At least 1 product photo is required to publish.';
     }
     return '';
+  };
+
+  const uploadBatches = async (productId, files) => {
+    for (let i = 0; i < files.length; i += 6) {
+      const batch = files.slice(i, i + 6);
+      const formData = new FormData();
+      batch.forEach((f) => formData.append('images', f));
+      const res = await productsApi.uploadImages(productId, formData, (evt) => {
+        if (evt.total) {
+          setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
+        }
+      });
+      if (res?.data?.images) {
+        setExistingImages(res.data.images);
+      }
+    }
+    setUploadProgress(null);
+  };
+
+  const handleUploadExisting = async (files) => {
+    setError('');
+    setImageBusy(true);
+    try {
+      await uploadBatches(id, files);
+    } catch (err) {
+      setError(err.message || 'Failed to upload product images.');
+    } finally {
+      setUploadProgress(null);
+      setImageBusy(false);
+    }
+  };
+
+  const handleDeleteExisting = async (imageId) => {
+    setError('');
+    setImageBusy(true);
+    try {
+      const res = await productsApi.deleteImage(id, imageId);
+      setExistingImages(res?.data?.images || []);
+    } catch (err) {
+      setError(err.message || 'Failed to remove image.');
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const handleReorderExisting = async (imageIds) => {
+    setError('');
+    setImageBusy(true);
+    try {
+      const res = await productsApi.reorderImages(id, imageIds);
+      setExistingImages(res?.data?.images || []);
+    } catch (err) {
+      setError(err.message || 'Failed to reorder images.');
+    } finally {
+      setImageBusy(false);
+    }
   };
 
   const handleAction = async (saveAsDraft) => {
@@ -140,8 +204,14 @@ export const SellPage = () => {
     setSubmitting(true);
     try {
       if (!isEditMode) {
-        const res = await productsApi.create(buildPayload(saveAsDraft));
+        const res = await productsApi.create(buildPayload(true));
         const created = res?.data?.product;
+        if (queuedFiles.length > 0) {
+          await uploadBatches(created.id, queuedFiles);
+        }
+        if (!saveAsDraft) {
+          await productsApi.publish(created.id);
+        }
         navigate(saveAsDraft ? '/my-listings' : `/products/${created.id}`);
       } else {
         const updateData = buildPayload(saveAsDraft);
@@ -155,6 +225,7 @@ export const SellPage = () => {
     } catch (err) {
       setError(err.message || 'Could not save listing.');
     } finally {
+      setUploadProgress(null);
       setSubmitting(false);
     }
   };
@@ -325,6 +396,19 @@ export const SellPage = () => {
             />
             <span>Price is negotiable</span>
           </label>
+
+          <ProductImageUploader
+            existingImages={isEditMode ? existingImages : []}
+            queuedFiles={isEditMode ? [] : queuedFiles}
+            onQueueFiles={(files) => setQueuedFiles((prev) => [...prev, ...files].slice(0, 8))}
+            onRemoveQueued={(idx) => setQueuedFiles((prev) => prev.filter((_, i) => i !== idx))}
+            onReorderQueued={(next) => setQueuedFiles(next)}
+            onUploadFiles={isEditMode ? handleUploadExisting : undefined}
+            onDeleteExisting={isEditMode ? handleDeleteExisting : undefined}
+            onReorderExisting={isEditMode ? handleReorderExisting : undefined}
+            uploadProgress={uploadProgress}
+            busy={submitting || imageBusy}
+          />
 
           <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-700/60">
             {(!isEditMode || existingStatus === 'DRAFT') && (
