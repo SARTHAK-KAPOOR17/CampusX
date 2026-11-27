@@ -1,6 +1,22 @@
 // server/tests/products.test.js
+const crypto = require('crypto');
 const request = require('supertest');
 const bcrypt = require('bcryptjs');
+
+jest.mock('../src/services/storage', () => ({
+  putObject: jest.fn(async ({ key }) => ({ key })),
+  deleteObject: jest.fn(async () => {}),
+  deleteObjects: jest.fn(async () => {}),
+  listObjects: jest.fn(async () => []),
+  getSignedReadUrl: jest.fn(async (key, expiresInSeconds = 900) =>
+    key
+      ? `https://storage.campusx.test/campusx-media/${key}?X-Amz-Expires=${expiresInSeconds}&X-Amz-Signature=mock`
+      : null
+  ),
+  getPublicUrl: jest.fn((key) => (key ? `https://cdn.campusx.test/${key}` : null)),
+  ensureStorageReady: jest.fn(async () => true),
+}));
+
 const app = require('../src/app');
 const { prisma } = require('../src/config/db');
 const { seedCategories, DEFAULT_CATEGORIES } = require('../prisma/seed');
@@ -50,6 +66,36 @@ describe('Marketplace Core, Categories, Lifecycle & Expiry Job Suite', () => {
       token: loginRes.body.data.accessToken,
       email,
     };
+  };
+
+  const attachTestImageRecord = async (productId) => {
+    const imageId = crypto.randomUUID();
+    return prisma.productImage.create({
+      data: {
+        id: imageId,
+        productId,
+        storageKey: `products/${productId}/${imageId}`,
+        position: 0,
+        isPrimary: true,
+        width: 800,
+        height: 600,
+        sizeBytes: 12345,
+        blurDataUrl: 'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=',
+      },
+    });
+  };
+
+  const createPublishedProduct = async (token, fields) => {
+    const draftRes = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...fields, saveAsDraft: true });
+    const productId = draftRes.body.data.product.id;
+    await attachTestImageRecord(productId);
+    const pubRes = await request(app)
+      .post(`/api/products/${productId}/publish`)
+      .set('Authorization', `Bearer ${token}`);
+    return pubRes;
   };
 
   beforeAll(async () => {
@@ -146,6 +192,13 @@ describe('Marketplace Core, Categories, Lifecycle & Expiry Job Suite', () => {
       expect(patchRes.body.data.product.description).toBe('Clean copy');
       expect(patchRes.body.data.product.tags).toEqual(['math', 'cs101']);
 
+      const pubWithoutImage = await request(app)
+        .post(`/api/products/${draftRes.body.data.product.id}/publish`)
+        .set('Authorization', `Bearer ${seller.token}`);
+      expect(pubWithoutImage.statusCode).toBe(422);
+
+      await attachTestImageRecord(draftRes.body.data.product.id);
+
       const pubRes = await request(app)
         .post(`/api/products/${draftRes.body.data.product.id}/publish`)
         .set('Authorization', `Bearer ${seller.token}`);
@@ -164,17 +217,13 @@ describe('Marketplace Core, Categories, Lifecycle & Expiry Job Suite', () => {
       const cat = categories[0];
 
       // Create ACTIVE listing
-      const createRes = await request(app)
-        .post('/api/products')
-        .set('Authorization', `Bearer ${owner.token}`)
-        .send({
-          saveAsDraft: false,
-          title: 'Campus Bicycle',
-          description: 'Good brakes and lock included',
-          price: 3500,
-          categoryId: cat.id,
-          condition: 'GOOD',
-        });
+      const createRes = await createPublishedProduct(owner.token, {
+        title: 'Campus Bicycle',
+        description: 'Good brakes and lock included',
+        price: 3500,
+        categoryId: cat.id,
+        condition: 'GOOD',
+      });
       const productId = createRes.body.data.product.id;
 
       // Another student gets 403 on edit, status change, and delete
@@ -299,7 +348,8 @@ describe('Marketplace Core, Categories, Lifecycle & Expiry Job Suite', () => {
       expect(ownerDraft.statusCode).toBe(200);
       expect(ownerDraft.body.data.product.viewCount).toBe(0);
 
-      // Publish -> ACTIVE
+      // Attach image & Publish -> ACTIVE
+      await attachTestImageRecord(productId);
       await request(app)
         .post(`/api/products/${productId}/publish`)
         .set('Authorization', `Bearer ${owner.token}`);
@@ -361,41 +411,29 @@ describe('Marketplace Core, Categories, Lifecycle & Expiry Job Suite', () => {
       const catB = categories[1];
 
       // Create 3 ACTIVE items (2 in catA, 1 in catB) + 1 DRAFT
-      const p1 = await request(app)
-        .post('/api/products')
-        .set('Authorization', `Bearer ${seller.token}`)
-        .send({
-          saveAsDraft: false,
-          title: 'Item One',
-          description: 'Desc 1',
-          price: 100,
-          categoryId: catA.id,
-          condition: 'NEW',
-        });
+      const p1 = await createPublishedProduct(seller.token, {
+        title: 'Item One',
+        description: 'Desc 1',
+        price: 100,
+        categoryId: catA.id,
+        condition: 'NEW',
+      });
 
-      const p2 = await request(app)
-        .post('/api/products')
-        .set('Authorization', `Bearer ${seller.token}`)
-        .send({
-          saveAsDraft: false,
-          title: 'Item Two',
-          description: 'Desc 2',
-          price: 200,
-          categoryId: catA.id,
-          condition: 'GOOD',
-        });
+      const p2 = await createPublishedProduct(seller.token, {
+        title: 'Item Two',
+        description: 'Desc 2',
+        price: 200,
+        categoryId: catA.id,
+        condition: 'GOOD',
+      });
 
-      await request(app)
-        .post('/api/products')
-        .set('Authorization', `Bearer ${seller.token}`)
-        .send({
-          saveAsDraft: false,
-          title: 'Item Three',
-          description: 'Desc 3',
-          price: 300,
-          categoryId: catB.id,
-          condition: 'FAIR',
-        });
+      await createPublishedProduct(seller.token, {
+        title: 'Item Three',
+        description: 'Desc 3',
+        price: 300,
+        categoryId: catB.id,
+        condition: 'FAIR',
+      });
 
       await request(app)
         .post('/api/products')
