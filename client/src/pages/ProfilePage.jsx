@@ -13,9 +13,10 @@ import {
 import { usersApi, resolveAssetUrl } from '../services/api';
 import { useAuthStore } from '../store';
 import { VerifiedBadge } from '../components/VerifiedBadge';
+import { SmartImage } from '../components/SmartImage';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2MB
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5MB
 
 export const ProfilePage = () => {
   const { user, accessToken, setAuth } = useAuthStore();
@@ -73,7 +74,7 @@ export const ProfilePage = () => {
     }
 
     if (file.size > MAX_AVATAR_BYTES) {
-      setAvatarError('Image size must be 2MB or smaller.');
+      setAvatarError('Image size must be 5MB or smaller.');
       return;
     }
 
@@ -148,6 +149,17 @@ export const ProfilePage = () => {
     }
   };
 
+  const refreshProfileAvatar = async () => {
+    try {
+      const res = await usersApi.getMyProfile();
+      if (res?.data?.user) {
+        setAuth({ user: res.data.user, accessToken });
+      }
+    } catch {
+      // Ignore silent refresh error
+    }
+  };
+
   const currentAvatarUrl = previewUrl || resolveAssetUrl(user?.profilePictureUrl);
 
   return (
@@ -180,11 +192,15 @@ export const ProfilePage = () => {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 p-5 rounded-xl bg-slate-900/60 border border-slate-700/60">
           <div className="relative shrink-0">
             {currentAvatarUrl ? (
-              <img
-                src={currentAvatarUrl}
-                alt={user?.name || 'Profile avatar'}
-                className="w-20 h-20 rounded-2xl object-cover border-2 border-slate-600 shadow-lg"
-              />
+              <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-slate-600 shadow-lg">
+                <SmartImage
+                  src={currentAvatarUrl}
+                  alt={user?.name || 'Profile avatar'}
+                  loading="eager"
+                  className="w-20 h-20 object-cover"
+                  onUrlExpired={previewUrl ? null : refreshProfileAvatar}
+                />
+              </div>
             ) : (
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-bold text-2xl">
                 {user?.name?.charAt(0)?.toUpperCase() || 'U'}
@@ -196,7 +212,7 @@ export const ProfilePage = () => {
             <div>
               <h2 className="text-sm font-semibold text-white">Profile Picture</h2>
               <p className="text-xs text-slate-400">
-                JPEG, PNG, or WebP up to 2MB. Verified by file signature.
+                JPEG, PNG, or WebP up to 5MB. Verified by file signature and EXIF-stripped.
               </p>
             </div>
 

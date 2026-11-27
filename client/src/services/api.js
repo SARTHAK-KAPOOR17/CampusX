@@ -159,4 +159,13 @@ export const productsApi = {
   publish: (id) => apiClient.post(`/api/products/${id}/publish`),
   updateStatus: (id, status) => apiClient.post(`/api/products/${id}/status`, { status }),
   remove: (id) => apiClient.delete(`/api/products/${id}`),
+  uploadImages: (id, formData, onUploadProgress) =>
+    apiClient.post(`/api/products/${id}/images`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+      onUploadProgress,
+    }),
+  deleteImage: (id, imageId) => apiClient.delete(`/api/products/${id}/images/${imageId}`),
+  reorderImages: (id, imageIds) =>
+    apiClient.patch(`/api/products/${id}/images/order`, { imageIds }),
 };
