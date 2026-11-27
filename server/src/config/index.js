@@ -33,10 +33,7 @@ const config = {
   },
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12', 10),
   verification: {
-    allowedDomains: (
-      process.env.ALLOWED_COLLEGE_DOMAINS ||
-      'campusx.edu,university.edu,mit.edu,stanford.edu,iitd.ac.in'
-    )
+    allowedDomains: (process.env.ALLOWED_COLLEGE_DOMAINS || 'chitkara.edu.in')
       .split(',')
       .map((d) => d.trim().toLowerCase())
       .filter(Boolean),

@@ -6,6 +6,31 @@ import { verificationApi } from '../services/api';
 import { useAuthStore } from '../store';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 
+const ALLOWED_COLLEGE_DOMAIN = 'chitkara.edu.in';
+const COLLEGE_EMAIL_ERROR = 'Please use your college email ending with @chitkara.edu.in';
+const LOCAL_PART_REGEX = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i;
+
+const validateChitkaraEmail = (rawEmail) => {
+  if (typeof rawEmail !== 'string') return { valid: false, normalized: '' };
+  const normalized = rawEmail.trim().toLowerCase();
+  if (!normalized || normalized.length > 254) return { valid: false, normalized };
+  const parts = normalized.split('@');
+  if (parts.length !== 2) return { valid: false, normalized };
+  const [localPart, domain] = parts;
+  if (
+    !localPart ||
+    localPart.length > 64 ||
+    /\s/.test(localPart) ||
+    !LOCAL_PART_REGEX.test(localPart) ||
+    localPart.startsWith('.') ||
+    localPart.endsWith('.') ||
+    localPart.includes('..')
+  ) {
+    return { valid: false, normalized };
+  }
+  return { valid: domain === ALLOWED_COLLEGE_DOMAIN, normalized };
+};
+
 export const VerificationPage = () => {
   const { user, accessToken, setAuth } = useAuthStore();
 
@@ -50,19 +75,19 @@ export const VerificationPage = () => {
     setError('');
     setInfoMessage('');
 
-    const trimmed = collegeEmail.trim().toLowerCase();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setError('Please enter a valid college email address.');
+    const { valid, normalized } = validateChitkaraEmail(collegeEmail);
+    if (!valid) {
+      setError(COLLEGE_EMAIL_ERROR);
       return;
     }
 
     setLoading(true);
     try {
-      const res = await verificationApi.requestOtp(trimmed);
+      const res = await verificationApi.requestOtp(normalized);
       setStep('otp');
       setCooldown(res?.data?.cooldownSeconds || 60);
       setOtpDigits(['', '', '', '', '', '']);
-      setInfoMessage(`A 6-digit verification code has been sent to ${trimmed}.`);
+      setInfoMessage(`A 6-digit verification code has been sent to ${normalized}.`);
       setTimeout(() => inputRefs.current[0]?.focus(), 50);
     } catch (err) {
       setError(err.message || 'Failed to send verification code.');
@@ -231,12 +256,11 @@ export const VerificationPage = () => {
                 type="email"
                 value={collegeEmail}
                 onChange={(e) => setCollegeEmail(e.target.value)}
-                placeholder="student@campusx.edu"
+                placeholder="rollno@chitkara.edu.in"
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-900/70 border border-slate-700 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="mt-1.5 text-xs text-slate-400">
-                Use an approved university domain (e.g., <code>@campusx.edu</code>, <code>@mit.edu</code>,{' '}
-                <code>@stanford.edu</code>).
+                Use your official <code>@chitkara.edu.in</code> college email address to verify your student account.
               </p>
             </div>
 

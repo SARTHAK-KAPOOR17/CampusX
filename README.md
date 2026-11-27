@@ -226,12 +226,12 @@ All authentication endpoints are mounted under `/api/auth` (and RBAC admin endpo
 
 ## 🎓 Verification API
 
-Student verification endpoints are mounted under `/api/verification` (authenticated users only).
+Student verification endpoints are mounted under `/api/verification` (authenticated users only). Verification is **strictly restricted to `@chitkara.edu.in`** (`ALLOWED_COLLEGE_DOMAINS=chitkara.edu.in`, exact domain equality check — subdomains, prefix/suffix lookalikes such as `mail.chitkara.edu.in`, `chitkara.edu.in.evil.com`, or `chitkara.edu` are rejected; stored lowercase with case-insensitive duplicate checks). Normal login/signup emails remain unrestricted (so admin and external signups keep working).
 
 | Method | Endpoint | Access | Rate / Abuse Controls | Description |
 |:---:|:---|:---|:---|:---|
-| `POST` | `/api/verification/request` | Bearer JWT | 60s resend cooldown; max 5 requests/hour/user | Validates `collegeEmail` domain against `ALLOWED_COLLEGE_DOMAINS`, checks uniqueness, generates 6-digit `crypto.randomInt` OTP (SHA-256 hashed, 10m expiry), invalidates older OTPs, sends via Nodemailer (or logs to console in dev if SMTP unconfigured). |
-| `POST` | `/api/verification/confirm` | Bearer JWT | Max 5 wrong attempts/OTP; constant-time check | Verifies OTP, marks `isVerifiedStudent = true`, sets `verifiedAt` & `collegeEmail` on `User`, and marks OTP consumed. |
+| `POST` | `/api/verification/request` | Bearer JWT | 60s resend cooldown; max 5 requests/hour/user | Validates `collegeEmail` (exact domain `@chitkara.edu.in` + format), checks case-insensitive uniqueness, generates 6-digit `crypto.randomInt` OTP (SHA-256 hashed, 10m expiry), invalidates older OTPs, sends via Nodemailer (or logs to console in dev if SMTP unconfigured). |
+| `POST` | `/api/verification/confirm` | Bearer JWT | Max 5 wrong attempts/OTP; constant-time check | Verifies OTP, marks `isVerifiedStudent = true`, sets `verifiedAt` & lowercase `collegeEmail` on `User`, and marks OTP consumed. |
 | `GET` | `/api/verification/status` | Bearer JWT | Standard | Returns `{ isVerifiedStudent, collegeEmail, verifiedAt }`. |
 
 ---
