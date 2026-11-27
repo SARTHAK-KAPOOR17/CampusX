@@ -2,6 +2,7 @@
 const cron = require('node-cron');
 const config = require('../config');
 const { prisma } = require('../config/db');
+const cache = require('../services/cache');
 const logger = require('../utils/logger');
 
 /**
@@ -21,6 +22,13 @@ const expireOverdueListings = async (now = new Date()) => {
       status: 'EXPIRED',
     },
   });
+
+  if (result.count > 0) {
+    await Promise.all([
+      cache.bumpVersion('products:version'),
+      cache.delByPrefix('search:suggest:'),
+    ]);
+  }
 
   return {
     expiredCount: result.count,

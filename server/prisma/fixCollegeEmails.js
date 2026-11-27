@@ -40,6 +40,8 @@ async function fixInvalidCollegeEmails({
         collegeEmail: null,
       },
     });
+    const { invalidateAuthUserCache } = require('../src/middleware/auth');
+    await Promise.all(nonCompliant.map((u) => invalidateAuthUserCache(u.id)));
   }
 
   return {

@@ -26,8 +26,14 @@ const updateUserRoleValidation = [
     .withMessage(`Role must be one of: ${VALID_ROLES.join(', ')}`),
 ];
 
+const updateUserStatusValidation = [
+  param('id').isUUID().withMessage('Invalid user ID format'),
+  body('isActive').isBoolean().withMessage('isActive must be a boolean').toBoolean(),
+];
+
 module.exports = {
   listUsersValidation,
   updateUserRoleValidation,
+  updateUserStatusValidation,
   VALID_ROLES,
 };

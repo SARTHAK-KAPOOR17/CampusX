@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { prisma } = require('../../config/db');
 const AppError = require('../../utils/AppError');
 const storage = require('../../services/storage');
+const cache = require('../../services/cache');
 const {
   processImageVariants,
   uploadVariants,
@@ -15,6 +16,14 @@ const MAX_IMAGES_PER_PRODUCT = 8;
 const MAX_FILES_PER_REQUEST = 6;
 const UPLOAD_CONCURRENCY = 2;
 const EDITABLE_STATUSES = ['DRAFT', 'ACTIVE', 'RESERVED'];
+
+const invalidateListingImageCaches = async (productId) => {
+  await Promise.all([
+    cache.bumpVersion('products:version'),
+    cache.del(`products:detail:${productId}`),
+    cache.delByPrefix('search:suggest:'),
+  ]);
+};
 
 /**
  * Processes an array with bounded concurrency.
@@ -161,6 +170,7 @@ const uploadProductImages = async (productId, actorId, files = []) => {
     )
   );
 
+  await invalidateListingImageCaches(productId);
   return Promise.all(createdRows.map(formatProductImage));
 };
 
@@ -219,6 +229,7 @@ const deleteProductImage = async (productId, imageId, actorId) => {
     orderBy: { position: 'asc' },
   });
 
+  await invalidateListingImageCaches(productId);
   return Promise.all(updatedImages.map(formatProductImage));
 };
 
@@ -278,6 +289,7 @@ const reorderProductImages = async (productId, actorId, imageIds) => {
     orderBy: { position: 'asc' },
   });
 
+  await invalidateListingImageCaches(productId);
   return Promise.all(reordered.map(formatProductImage));
 };
 

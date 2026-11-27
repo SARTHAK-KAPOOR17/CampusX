@@ -2,7 +2,11 @@
 const express = require('express');
 const validate = require('../../middleware/validator');
 const { authenticate, authorize } = require('../../middleware/auth');
-const { listUsersValidation, updateUserRoleValidation } = require('./admin.validators');
+const {
+  listUsersValidation,
+  updateUserRoleValidation,
+  updateUserStatusValidation,
+} = require('./admin.validators');
 const adminController = require('./admin.controller');
 const { moderatorStatusValidation } = require('../products/products.validators');
 const productsController = require('../products/products.controller');
@@ -26,6 +30,14 @@ router.patch(
   authorize('ADMIN'),
   validate(updateUserRoleValidation),
   adminController.updateUserRole
+);
+
+// PATCH /api/admin/users/:id/status (ADMIN only)
+router.patch(
+  '/users/:id/status',
+  authorize('ADMIN'),
+  validate(updateUserStatusValidation),
+  adminController.updateUserStatus
 );
 
 // PATCH /api/admin/products/:id/status (ADMIN and MODERATOR moderation hook)

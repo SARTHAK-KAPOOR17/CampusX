@@ -24,7 +24,21 @@ const updateUserRole = asyncHandler(async (req, res) => {
   return successResponse(res, { user }, 'User role updated successfully', 200);
 });
 
+const updateUserStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { isActive } = req.body;
+
+  const user = await adminService.updateUserStatus({
+    actorId: req.user.id,
+    targetUserId: id,
+    isActive,
+  });
+
+  return successResponse(res, { user }, 'User active status updated successfully', 200);
+});
+
 module.exports = {
   listUsers,
   updateUserRole,
+  updateUserStatus,
 };

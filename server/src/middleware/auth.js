@@ -2,11 +2,37 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const { prisma } = require('../config/db');
+const cache = require('../services/cache');
 const AppError = require('../utils/AppError');
 const asyncHandler = require('../utils/asyncHandler');
 
+const authCacheKey = (userId) => `auth:user:${userId}`;
+
 /**
- * Verifies Bearer access token, loads the user from DB, and rejects inactive users.
+ * Loads minimal auth identity (never passwordHash) via 60s Redis cache.
+ */
+const loadAuthUser = async (userId) => {
+  return cache.getOrSet(authCacheKey(userId), config.cache.authTtlSeconds, async () => {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        isActive: true,
+        isVerifiedStudent: true,
+      },
+    });
+    return user || null;
+  });
+};
+
+const invalidateAuthUserCache = async (userId) => {
+  if (!userId) return;
+  await cache.del(authCacheKey(userId));
+};
+
+/**
+ * Verifies Bearer access token, loads the user (cached 60s), and rejects inactive users.
  */
 const authenticate = asyncHandler(async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -26,22 +52,7 @@ const authenticate = asyncHandler(async (req, res, next) => {
     throw new AppError('Invalid or expired access token.', 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: decoded.sub },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      isActive: true,
-      collegeEmail: true,
-      isVerifiedStudent: true,
-      verifiedAt: true,
-      avatarKey: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  const user = await loadAuthUser(decoded.sub);
 
   if (!user) {
     throw new AppError('User associated with this token no longer exists.', 401);
@@ -57,7 +68,6 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
 /**
  * Role-Based Access Control middleware factory.
- * Allows access only if req.user.role is included in allowed roles.
  */
 const authorize = (...roles) => {
   return (req, res, next) => {
@@ -111,17 +121,7 @@ const optionalAuthenticate = asyncHandler(async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, config.jwt.accessSecret);
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.sub },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        isActive: true,
-        isVerifiedStudent: true,
-      },
-    });
+    const user = await loadAuthUser(decoded.sub);
     req.user = user && user.isActive ? user : null;
   } catch {
     req.user = null;
@@ -135,4 +135,6 @@ module.exports = {
   optionalAuthenticate,
   authorize,
   requireVerifiedStudent,
+  invalidateAuthUserCache,
+  authCacheKey,
 };

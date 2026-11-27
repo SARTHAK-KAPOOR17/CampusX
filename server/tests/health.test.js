@@ -1,6 +1,7 @@
 // server/tests/health.test.js
 const request = require('supertest');
 const app = require('../src/app');
+const cache = require('../src/services/cache');
 
 // Mock Prisma client to avoid requiring live DB during unit tests
 jest.mock('../src/config/db', () => ({
@@ -15,6 +16,10 @@ jest.mock('../src/config/db', () => ({
 }));
 
 describe('GET /api/health', () => {
+  afterAll(async () => {
+    await cache.disconnect();
+  });
+
   it('should return 200 with standard health check payload', async () => {
     const res = await request(app).get('/api/health');
 
@@ -33,6 +38,11 @@ describe('GET /api/health', () => {
     expect(res.body.data).toHaveProperty('database');
     expect(res.body.data.database).toMatchObject({
       status: 'connected',
+      latencyMs: expect.any(Number),
+    });
+    expect(res.body.data).toHaveProperty('redis');
+    expect(res.body.data.redis).toMatchObject({
+      status: expect.stringMatching(/^(connected|disconnected)$/),
       latencyMs: expect.any(Number),
     });
     expect(res.body).toHaveProperty('timestamp');
