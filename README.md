@@ -26,8 +26,8 @@
 | **Day 2** | **Authentication & Role-Based Access Control** | ✅ Done | JWT access tokens (15m), opaque refresh tokens (SHA-256 hashed, 7d) in httpOnly cookie with rotation + reuse detection, bcrypt (12 rounds), RBAC (`STUDENT`, `MODERATOR`, `ADMIN`), admin role management, seed script, Zustand in-memory auth store & Axios refresh interceptor. |
 | **Day 3** | **Student Verification & User Profiles** | ✅ Done | College email domain whitelist + 6-digit SHA-256 OTP verification (`Nodemailer` / dev console), `requireVerifiedStudent` middleware, profile CRUD with bio XSS sanitization, avatar upload (`multer` + magic-byte validation), public profile endpoint, verified badge UI. |
 | **Day 4** | **Marketplace Core: Listings, Categories, Conditions & Lifecycle** | ✅ Done | `Category` & `Product` Prisma models + idempotent category seed, Draft/Publish workflow (`requireVerifiedStudent`), central lifecycle state machine (`DRAFT`, `ACTIVE`, `RESERVED`, `SOLD`, `EXPIRED`, `UNDER_REVIEW`), soft-delete, view counting, moderator review hook, hourly expiry cron (`node-cron`), and Marketplace/Sell/Detail/My Listings UI. |
-| **Day 5** | **Campus Search & Filtering Engine** | ⏳ Planned | Full-text indexing, campus filtering, category filters, price range sliders, condition filters. |
-| **Day 6** | **Media Storage & Image Pipeline** | ⏳ Planned | S3-compatible cloud storage, multi-image uploads, thumbnail generation, file validation, CDN delivery. |
+| **Day 5** | **Product Images & Cloud Storage** | 🚧 In Progress | S3-compatible storage abstraction (`MinIO` / AWS S3 / R2), `sharp` optimization pipeline (magic bytes, EXIF/GPS strip, 3 WebP variants + blur placeholder), `ProductImage` & `avatarKey` migration, presigned/CDN URLs, multi-image uploader, gallery & lightbox UI. |
+| **Day 6** | **Campus Search & Filtering Engine** | ⏳ Planned | Full-text indexing, campus filtering, category filters, price range sliders, condition filters. |
 | **Day 7** | **AI Service: Auto-Categorization & Tagging** | ⏳ Planned | FastAPI text processing, zero-shot/embedding-based category prediction, auto-tagging of item condition and academic course codes. |
 | **Day 8** | **AI Service: Price Recommendation Engine** | ⏳ Planned | Pricing algorithms analyzing historical campus transactions, MSRP depreciation models, fair-market price badges. |
 | **Day 9** | **Real-Time Buyer-Seller Messaging** | ⏳ Planned | WebSocket / Socket.io architecture, instant direct messaging, chat history persistence, unread badge counts. |
@@ -287,6 +287,59 @@ stateDiagram-v2
     RESERVED --> UNDER_REVIEW: Admin / Moderator flags
     UNDER_REVIEW --> ACTIVE: Admin / Moderator approves
     SOLD --> [*]
+```
+
+---
+
+## 🖼️ Storage & Images
+
+### Architecture
+CampusX decouples image processing from object storage using a provider-agnostic S3 interface (`server/src/services/storage/`) backed by `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`. Locally, Docker Compose runs **MinIO** on `:9000` (API) and `:9001` (Web Console) with a **private** bucket (`campusx-media`). On startup in development, the server ensures the bucket exists; in production, it fails fast if storage is unreachable.
+
+### Upload & Optimization Flow
+1. **Multipart Ingestion**: `multer` (memory storage, 5MB limit) + strict upload rate limiting (`uploadLimiter`).
+2. **Magic-Byte & Decompression-Bomb Guard**: `sharp` + binary signature checks accept only genuine `JPEG`, `PNG`, and `WebP` files (`limitInputPixels` enforced).
+3. **Privacy & Optimization**: Strips all EXIF/GPS metadata, auto-rotates via orientation, and generates 3 WebP variants (`thumb`: 320px, `medium`: 800px, `large`: 1600px, never upscaling) plus a ~20px base64 `blurDataUrl`.
+4. **Private Bucket Storage**: Objects are uploaded concurrently under random UUID keys — never user-supplied filenames.
+5. **URL Signing**: API responses return short-lived presigned `GET` URLs (`SIGNED_URL_EXPIRY_SECONDS`, default `900`s) computed locally in CPU (no per-image network calls), or `CDN_BASE_URL` URLs when a CDN is configured.
+
+### Bucket Key Layout
+```text
+campusx-media/
+├── products/
+│   └── {productId}/
+│       └── {imageId}/
+│           ├── thumb.webp      (320px wide)
+│           ├── medium.webp     (800px wide)
+│           └── large.webp      (1600px wide)
+└── avatars/
+    └── {userId}/
+        └── {imageId}/
+            ├── thumb.webp      (320px wide)
+            ├── medium.webp     (800px wide)
+            └── large.webp      (1600px wide)
+```
+
+### Switching from MinIO to AWS S3 or Cloudflare R2
+No application code changes are required — only environment variables:
+
+```env
+# AWS S3 Example
+STORAGE_ENDPOINT=https://s3.ap-south-1.amazonaws.com
+STORAGE_REGION=ap-south-1
+STORAGE_BUCKET=campusx-prod-media
+STORAGE_ACCESS_KEY=<IAM_ACCESS_KEY>
+STORAGE_SECRET_KEY=<IAM_SECRET_KEY>
+STORAGE_FORCE_PATH_STYLE=false
+CDN_BASE_URL=https://cdn.campusx.edu   # Optional CloudFront/Cloudflare CDN
+
+# Cloudflare R2 Example
+STORAGE_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+STORAGE_REGION=auto
+STORAGE_BUCKET=campusx-prod-media
+STORAGE_ACCESS_KEY=<R2_ACCESS_KEY>
+STORAGE_SECRET_KEY=<R2_SECRET_KEY>
+STORAGE_FORCE_PATH_STYLE=true
 ```
 
 ---
