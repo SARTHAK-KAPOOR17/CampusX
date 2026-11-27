@@ -64,7 +64,7 @@ describe('Product Images & Cloud Storage Pipeline Suite', () => {
         role: 'STUDENT',
         isActive: true,
         isVerifiedStudent: true,
-        collegeEmail: `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@campusx.edu`,
+        collegeEmail: `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@chitkara.edu.in`,
         verifiedAt: new Date(),
       },
     });

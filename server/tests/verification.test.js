@@ -1,14 +1,17 @@
 // server/tests/verification.test.js
 const request = require('supertest');
+const bcrypt = require('bcryptjs');
 const app = require('../src/app');
 const { prisma } = require('../src/config/db');
 const mailer = require('../src/utils/mailer');
 const { requireVerifiedStudent } = require('../src/middleware/auth');
+const { fixInvalidCollegeEmails } = require('../prisma/fixCollegeEmails');
 
 const TEST_DOMAIN = '@verifytest.campusx.local';
 const STRONG_PASSWORD = 'Password123!';
+const EXPECTED_EMAIL_ERROR = 'Please use your college email ending with @chitkara.edu.in';
 
-describe('Student Verification & requireVerifiedStudent Suite', () => {
+describe('Student Verification (@chitkara.edu.in) & requireVerifiedStudent Suite', () => {
   const createdEmails = [];
   let sendOtpSpy;
 
@@ -51,7 +54,7 @@ describe('Student Verification & requireVerifiedStudent Suite', () => {
   it('should block unauthenticated requests to verification endpoints with 401', async () => {
     const reqRes = await request(app)
       .post('/api/verification/request')
-      .send({ collegeEmail: 'student@campusx.edu' });
+      .send({ collegeEmail: 'student@chitkara.edu.in' });
     const confRes = await request(app)
       .post('/api/verification/confirm')
       .send({ otp: '123456' });
@@ -62,30 +65,58 @@ describe('Student Verification & requireVerifiedStudent Suite', () => {
     expect(statusRes.statusCode).toBe(401);
   });
 
-  it('should reject disallowed college email domains', async () => {
+  it('should reject disallowed domains, lookalikes, subdomains, empty, and malformed college emails with 400', async () => {
     const { token } = await signupUser('baddomain');
 
-    const res = await request(app)
+    const invalidInputs = [
+      'student@gmail.com',
+      'x@chitkara.edu.in.evil.com',
+      'x@mail.chitkara.edu.in',
+      'x@chitkara.edu',
+      '',
+      '   ',
+      'missingatsign.chitkara.edu.in',
+      'bad space@chitkara.edu.in',
+      'two@at@chitkara.edu.in',
+      '@chitkara.edu.in',
+      `${'a'.repeat(245)}@chitkara.edu.in`,
+    ];
+
+    for (const collegeEmail of invalidInputs) {
+      const res = await request(app)
+        .post('/api/verification/request')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ collegeEmail });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body.message).toBe(EXPECTED_EMAIL_ERROR);
+    }
+
+    // Missing collegeEmail field altogether
+    const missingRes = await request(app)
       .post('/api/verification/request')
       .set('Authorization', `Bearer ${token}`)
-      .send({ collegeEmail: 'student@gmail.com' });
+      .send({});
+    expect(missingRes.statusCode).toBe(400);
+    expect(missingRes.body.message).toBe(EXPECTED_EMAIL_ERROR);
 
-    expect(res.statusCode).toBe(400);
-    expect(res.body.message).toMatch(/not in the allowed college domains/i);
     expect(sendOtpSpy).not.toHaveBeenCalled();
   });
 
-  it('should verify OTP, update user & status, reflect in /api/auth/me, and reject duplicate collegeEmail for another user', async () => {
+  it('should accept Student@Chitkara.edu.in normalized to lowercase, verify OTP, and block case-insensitive duplicates', async () => {
     const userA = await signupUser('ver_a');
     const userB = await signupUser('ver_b');
-    const collegeEmail = `alice_${Date.now()}@campusx.edu`;
+    const uniqueLocal = `Student_${Date.now()}`;
+    const submittedCollegeEmail = `  ${uniqueLocal}@Chitkara.edu.in  `;
+    const expectedLower = `${uniqueLocal.toLowerCase()}@chitkara.edu.in`;
 
     const reqRes = await request(app)
       .post('/api/verification/request')
       .set('Authorization', `Bearer ${userA.token}`)
-      .send({ collegeEmail });
+      .send({ collegeEmail: submittedCollegeEmail });
 
     expect(reqRes.statusCode).toBe(200);
+    expect(reqRes.body.data.collegeEmail).toBe(expectedLower);
     expect(sendOtpSpy).toHaveBeenCalledTimes(1);
     const sentOtp = sendOtpSpy.mock.calls[0][0].otp;
     expect(sentOtp).toMatch(/^\d{6}$/);
@@ -98,36 +129,48 @@ describe('Student Verification & requireVerifiedStudent Suite', () => {
     expect(confirmRes.statusCode).toBe(200);
     expect(confirmRes.body.data.user).toMatchObject({
       isVerifiedStudent: true,
-      collegeEmail,
+      collegeEmail: expectedLower,
     });
     expect(confirmRes.body.data.user.verifiedAt).toBeTruthy();
 
-    // Status endpoint reflects verified state
+    // Status endpoint reflects normalized lowercase email
     const statusRes = await request(app)
       .get('/api/verification/status')
       .set('Authorization', `Bearer ${userA.token}`);
     expect(statusRes.statusCode).toBe(200);
     expect(statusRes.body.data.isVerifiedStudent).toBe(true);
-    expect(statusRes.body.data.collegeEmail).toBe(collegeEmail);
+    expect(statusRes.body.data.collegeEmail).toBe(expectedLower);
 
-    // /api/auth/me also returns isVerifiedStudent: true
+    // /api/auth/me reflects verified status
     const meRes = await request(app)
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${userA.token}`);
     expect(meRes.statusCode).toBe(200);
     expect(meRes.body.data.user.isVerifiedStudent).toBe(true);
 
-    // Duplicate college email rejected for User B
+    // Duplicate college email in uppercase/mixed case rejected for User B (409)
     const dupRes = await request(app)
       .post('/api/verification/request')
       .set('Authorization', `Bearer ${userB.token}`)
-      .send({ collegeEmail });
+      .send({ collegeEmail: `${uniqueLocal.toUpperCase()}@CHITKARA.EDU.IN` });
     expect(dupRes.statusCode).toBe(409);
+
+    // Confirm case-insensitive Prisma duplicate check even if a legacy DB row has mixed case
+    const userC = await signupUser('ver_c');
+    await prisma.user.update({
+      where: { id: userA.user.id },
+      data: { collegeEmail: `MixedCase_${uniqueLocal}@Chitkara.edu.in` },
+    });
+    const mixedDupRes = await request(app)
+      .post('/api/verification/request')
+      .set('Authorization', `Bearer ${userC.token}`)
+      .send({ collegeEmail: `mixedcase_${uniqueLocal.toLowerCase()}@chitkara.edu.in` });
+    expect(mixedDupRes.statusCode).toBe(409);
   });
 
   it('should invalidate OTP after 5 wrong attempts', async () => {
     const { token } = await signupUser('lockout');
-    const collegeEmail = `lock_${Date.now()}@mit.edu`;
+    const collegeEmail = `lock_${Date.now()}@chitkara.edu.in`;
 
     await request(app)
       .post('/api/verification/request')
@@ -145,7 +188,6 @@ describe('Student Verification & requireVerifiedStudent Suite', () => {
       expect(attemptRes.statusCode).toBe(400);
     }
 
-    // Even the real OTP is now invalidated
     const afterLockout = await request(app)
       .post('/api/verification/confirm')
       .set('Authorization', `Bearer ${token}`)
@@ -156,7 +198,7 @@ describe('Student Verification & requireVerifiedStudent Suite', () => {
 
   it('should reject an expired OTP', async () => {
     const { user, token } = await signupUser('expired');
-    const collegeEmail = `exp_${Date.now()}@stanford.edu`;
+    const collegeEmail = `exp_${Date.now()}@chitkara.edu.in`;
 
     await request(app)
       .post('/api/verification/request')
@@ -181,16 +223,14 @@ describe('Student Verification & requireVerifiedStudent Suite', () => {
 
   it('should enforce 60-second resend cooldown and 5 requests per hour limit', async () => {
     const { user, token } = await signupUser('ratelimit');
-    const collegeEmail = `rl_${Date.now()}@campusx.edu`;
+    const collegeEmail = `rl_${Date.now()}@chitkara.edu.in`;
 
-    // 1st request succeeds
     const firstRes = await request(app)
       .post('/api/verification/request')
       .set('Authorization', `Bearer ${token}`)
       .send({ collegeEmail });
     expect(firstRes.statusCode).toBe(200);
 
-    // Immediate 2nd request blocked by 60s cooldown
     const cooldownRes = await request(app)
       .post('/api/verification/request')
       .set('Authorization', `Bearer ${token}`)
@@ -198,7 +238,6 @@ describe('Student Verification & requireVerifiedStudent Suite', () => {
     expect(cooldownRes.statusCode).toBe(429);
     expect(cooldownRes.body.message).toMatch(/wait/i);
 
-    // Backdate existing OTP and seed 4 more within the hour (oldest > 60s ago)
     const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
     await prisma.emailOtp.updateMany({
       where: { userId: user.id },
@@ -216,13 +255,66 @@ describe('Student Verification & requireVerifiedStudent Suite', () => {
       })),
     });
 
-    // 6th request in the past hour is blocked by hourly limit
     const hourlyRes = await request(app)
       .post('/api/verification/request')
       .set('Authorization', `Bearer ${token}`)
       .send({ collegeEmail });
     expect(hourlyRes.statusCode).toBe(429);
     expect(hourlyRes.body.message).toMatch(/5 verification requests per hour/i);
+  });
+
+  it('fix:college-emails script supports dry run without mutating DB and --apply resets non-chitkara verifications without touching signup email', async () => {
+    const passwordHash = await bcrypt.hash(STRONG_PASSWORD, 12);
+    const badSignupEmail = trackEmail(`legacy_bad_${Date.now()}${TEST_DOMAIN}`);
+    const goodSignupEmail = trackEmail(`legacy_good_${Date.now()}${TEST_DOMAIN}`);
+
+    const badUser = await prisma.user.create({
+      data: {
+        name: 'Legacy Non-Chitkara User',
+        email: badSignupEmail,
+        passwordHash,
+        isVerifiedStudent: true,
+        collegeEmail: `legacy_${Date.now()}@campusx.edu`,
+        verifiedAt: new Date(),
+      },
+    });
+
+    const goodUser = await prisma.user.create({
+      data: {
+        name: 'Valid Chitkara User',
+        email: goodSignupEmail,
+        passwordHash,
+        isVerifiedStudent: true,
+        collegeEmail: `valid_${Date.now()}@chitkara.edu.in`,
+        verifiedAt: new Date(),
+      },
+    });
+
+    // 1. Dry run reports non-compliant user and leaves DB untouched
+    const dryRun = await fixInvalidCollegeEmails({ apply: false });
+    expect(dryRun.applied).toBe(false);
+    expect(dryRun.resetCount).toBe(0);
+    expect(dryRun.nonCompliantUsers.some((u) => u.id === badUser.id)).toBe(true);
+    expect(dryRun.nonCompliantUsers.some((u) => u.id === goodUser.id)).toBe(false);
+
+    const badAfterDry = await prisma.user.findUnique({ where: { id: badUser.id } });
+    expect(badAfterDry.isVerifiedStudent).toBe(true);
+    expect(badAfterDry.collegeEmail).toBe(badUser.collegeEmail);
+
+    // 2. --apply resets non-compliant verification, keeps signup email, and spares valid user
+    const applied = await fixInvalidCollegeEmails({ apply: true });
+    expect(applied.applied).toBe(true);
+    expect(applied.resetCount).toBeGreaterThanOrEqual(1);
+
+    const badAfterApply = await prisma.user.findUnique({ where: { id: badUser.id } });
+    expect(badAfterApply.isVerifiedStudent).toBe(false);
+    expect(badAfterApply.verifiedAt).toBeNull();
+    expect(badAfterApply.collegeEmail).toBeNull();
+    expect(badAfterApply.email).toBe(badSignupEmail);
+
+    const goodAfterApply = await prisma.user.findUnique({ where: { id: goodUser.id } });
+    expect(goodAfterApply.isVerifiedStudent).toBe(true);
+    expect(goodAfterApply.collegeEmail).toBe(goodUser.collegeEmail);
   });
 
   describe('requireVerifiedStudent middleware unit test', () => {

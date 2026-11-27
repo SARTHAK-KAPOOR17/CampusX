@@ -49,7 +49,7 @@ describe('Marketplace Core, Categories, Lifecycle & Expiry Job Suite', () => {
         isVerifiedStudent: verified,
         ...(verified
           ? {
-              collegeEmail: `college_${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@campusx.edu`,
+              collegeEmail: `college_${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@chitkara.edu.in`,
               verifiedAt: new Date(),
             }
           : {}),
