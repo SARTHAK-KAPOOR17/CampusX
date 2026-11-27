@@ -10,6 +10,8 @@ const {
   deleteVariants,
 } = require('../../services/images');
 const { USER_PUBLIC_SELECT } = require('../auth/auth.service');
+const { invalidateAuthUserCache } = require('../../middleware/auth');
+const cache = require('../../services/cache');
 
 const PUBLIC_PROFILE_SELECT = {
   id: true,
@@ -76,6 +78,11 @@ const updateMyProfile = async (userId, payload) => {
     select: USER_PUBLIC_SELECT,
   });
 
+  await Promise.all([
+    invalidateAuthUserCache(userId),
+    cache.bumpVersion('products:version'),
+  ]);
+
   return formatUserWithAvatar(user);
 };
 
@@ -112,6 +119,11 @@ const updateAvatar = async (userId, file) => {
   if (existing.avatarKey) {
     await deleteVariants(existing.avatarKey);
   }
+
+  await Promise.all([
+    invalidateAuthUserCache(userId),
+    cache.bumpVersion('products:version'),
+  ]);
 
   return formatUserWithAvatar(updatedUser);
 };

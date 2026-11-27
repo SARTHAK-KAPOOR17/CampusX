@@ -11,6 +11,7 @@ const verificationRoutes = require('./modules/verification/verification.routes')
 const userRoutes = require('./modules/users/users.routes');
 const categoryRoutes = require('./modules/categories/categories.routes');
 const productRoutes = require('./modules/products/products.routes');
+const searchRoutes = require('./modules/search/search.routes');
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/verification', verificationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/search', searchRoutes);
 
 // Root route
 app.get('/', (req, res) => {

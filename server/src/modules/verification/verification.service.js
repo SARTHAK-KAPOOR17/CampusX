@@ -6,6 +6,8 @@ const AppError = require('../../utils/AppError');
 const mailer = require('../../utils/mailer');
 const { formatUserWithAvatar } = require('../../utils/userFormatter');
 const { USER_PUBLIC_SELECT } = require('../auth/auth.service');
+const { invalidateAuthUserCache } = require('../../middleware/auth');
+const cache = require('../../services/cache');
 
 const RESEND_COOLDOWN_MS = 60 * 1000;
 const MAX_REQUESTS_PER_HOUR = 5;
@@ -264,6 +266,11 @@ const confirmOtp = async ({ userId, otp }) => {
       },
       select: USER_PUBLIC_SELECT,
     }),
+  ]);
+
+  await Promise.all([
+    invalidateAuthUserCache(userId),
+    cache.bumpVersion('products:version'),
   ]);
 
   return formatUserWithAvatar(updatedUser);

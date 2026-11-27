@@ -48,9 +48,20 @@ const getProductById = asyncHandler(async (req, res) => {
 
 const listPublicProducts = asyncHandler(async (req, res) => {
   const result = await productsService.listPublicProducts({
+    q: req.query.q,
     page: req.query.page,
     limit: req.query.limit,
     categoryId: req.query.categoryId,
+    category: req.query.category,
+    minPrice: req.query.minPrice,
+    maxPrice: req.query.maxPrice,
+    condition: req.query.condition,
+    availability: req.query.availability,
+    isNegotiable: req.query.isNegotiable,
+    verifiedSeller: req.query.verifiedSeller,
+    sort: req.query.sort,
+    clientIp: req.ip,
+    onCacheStatus: (status) => res.set('X-Cache', status),
   });
   return successResponse(res, result, 'Marketplace listings retrieved.', 200);
 });

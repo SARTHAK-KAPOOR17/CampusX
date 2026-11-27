@@ -194,14 +194,86 @@ const moderatorStatusValidation = [
     .withMessage(`Moderation status must be one of: ${MODERATOR_TARGET_STATUSES.join(', ')}`),
 ];
 
+const VALID_AVAILABILITY = ['available', 'reserved', 'all'];
+const VALID_SORTS = ['newest', 'price_asc', 'price_desc', 'popularity', 'relevance'];
+
 const listProductsValidation = [
+  query('q')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Search query q must be at most 100 characters'),
+  query('categoryId')
+    .optional({ values: 'falsy' })
+    .isUUID()
+    .withMessage('categoryId must be a valid UUID'),
+  query('category')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 64 })
+    .withMessage('category slug must be at most 64 characters'),
+  query('minPrice')
+    .optional({ values: 'falsy' })
+    .isFloat({ min: 0 })
+    .withMessage('minPrice must be a non-negative number')
+    .toFloat(),
+  query('maxPrice')
+    .optional({ values: 'falsy' })
+    .isFloat({ min: 0 })
+    .withMessage('maxPrice must be a non-negative number')
+    .toFloat(),
+  query('condition')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      const tokens = String(value)
+        .split(',')
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean);
+      const invalid = tokens.filter((t) => !VALID_CONDITIONS.includes(t));
+      if (invalid.length > 0) {
+        throw new Error(`Invalid condition value(s): ${invalid.join(', ')}`);
+      }
+      return true;
+    }),
+  query('availability')
+    .optional({ values: 'falsy' })
+    .isIn(VALID_AVAILABILITY)
+    .withMessage(`availability must be one of: ${VALID_AVAILABILITY.join(', ')}`),
+  query('isNegotiable')
+    .optional({ values: 'falsy' })
+    .isBoolean()
+    .withMessage('isNegotiable must be a boolean')
+    .toBoolean(),
+  query('verifiedSeller')
+    .optional({ values: 'falsy' })
+    .isBoolean()
+    .withMessage('verifiedSeller must be a boolean')
+    .toBoolean(),
+  query('sort')
+    .optional({ values: 'falsy' })
+    .isIn(VALID_SORTS)
+    .withMessage(`sort must be one of: ${VALID_SORTS.join(', ')}`),
   query('page').optional().isInt({ min: 1 }).withMessage('page must be >= 1').toInt(),
   query('limit')
     .optional()
     .isInt({ min: 1, max: 50 })
     .withMessage('limit must be between 1 and 50')
     .toInt(),
-  query('categoryId').optional().isUUID().withMessage('categoryId must be a valid UUID'),
+  query().custom((_, { req }) => {
+    const min = req.query.minPrice;
+    const max = req.query.maxPrice;
+    if (min !== undefined && min !== '' && max !== undefined && max !== '' && Number(min) > Number(max)) {
+      throw new Error('minPrice cannot be greater than maxPrice');
+    }
+    const sortVal = req.query.sort;
+    const qVal = req.query.q ? String(req.query.q).trim() : '';
+    if (sortVal === 'relevance' && !qVal) {
+      throw new Error('sort=relevance is only valid when search query q is provided');
+    }
+    return true;
+  }),
 ];
 
 const listMyProductsValidation = [
@@ -220,6 +292,8 @@ const listMyProductsValidation = [
 module.exports = {
   VALID_CONDITIONS,
   VALID_STATUSES,
+  VALID_AVAILABILITY,
+  VALID_SORTS,
   createProductValidation,
   updateProductValidation,
   productIdValidation,

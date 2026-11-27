@@ -1,7 +1,9 @@
 // server/src/modules/products/products.service.js
+const crypto = require('crypto');
 const { Prisma } = require('@prisma/client');
 const config = require('../../config');
 const { prisma } = require('../../config/db');
+const cache = require('../../services/cache');
 const AppError = require('../../utils/AppError');
 const { sanitizePlainText } = require('../../utils/sanitize');
 const { formatUserWithAvatar } = require('../../utils/userFormatter');
@@ -14,6 +16,7 @@ const {
 const EDITABLE_STATUSES = ['DRAFT', 'ACTIVE', 'RESERVED'];
 const PUBLIC_VISIBLE_STATUSES = ['ACTIVE', 'RESERVED', 'SOLD'];
 const FEED_STATUSES = ['ACTIVE', 'RESERVED'];
+const PRODUCTS_VERSION_KEY = 'products:version';
 
 /**
  * Central Listing Lifecycle Transition Map
@@ -82,6 +85,17 @@ const PRODUCT_LIST_INCLUDE = {
       blurDataUrl: true,
     },
   },
+};
+
+const invalidateProductCaches = async (productId = null) => {
+  const ops = [
+    cache.bumpVersion(PRODUCTS_VERSION_KEY),
+    cache.delByPrefix('search:suggest:'),
+  ];
+  if (productId) {
+    ops.push(cache.del(`products:detail:${productId}`));
+  }
+  await Promise.all(ops);
 };
 
 const formatProductDetail = async (product) => {
@@ -206,7 +220,6 @@ const findActiveProductOrThrow = async (productId) => {
 
 /**
  * Create a new product listing as DRAFT (0 images allowed) or ACTIVE.
- * Note: Publishing requires at least 1 image; direct saveAsDraft=false without images is rejected.
  */
 const createProduct = async (sellerId, payload) => {
   const saveAsDraft = payload.saveAsDraft === true;
@@ -247,7 +260,6 @@ const createProduct = async (sellerId, payload) => {
   };
 
   if (!saveAsDraft) {
-    // New listing has 0 images yet; require saving as draft and uploading images first
     assertReadyToPublish({ ...data, images: [] }, { requireImages: true });
   }
 
@@ -256,6 +268,7 @@ const createProduct = async (sellerId, payload) => {
     include: PRODUCT_DETAIL_INCLUDE,
   });
 
+  await invalidateProductCaches(created.id);
   return formatProductDetail(created);
 };
 
@@ -335,6 +348,7 @@ const updateProduct = async (productId, actorId, payload) => {
     include: PRODUCT_DETAIL_INCLUDE,
   });
 
+  await invalidateProductCaches(productId);
   return formatProductDetail(updated);
 };
 
@@ -369,6 +383,7 @@ const publishProduct = async (productId, actorId) => {
     include: PRODUCT_DETAIL_INCLUDE,
   });
 
+  await invalidateProductCaches(productId);
   return formatProductDetail(updated);
 };
 
@@ -410,6 +425,7 @@ const updateSellerStatus = async (productId, actorId, targetStatus) => {
     include: PRODUCT_DETAIL_INCLUDE,
   });
 
+  await invalidateProductCaches(productId);
   return formatProductDetail(updated);
 };
 
@@ -426,12 +442,12 @@ const updateModeratorStatus = async (productId, targetStatus) => {
     include: PRODUCT_DETAIL_INCLUDE,
   });
 
+  await invalidateProductCaches(productId);
   return formatProductDetail(updated);
 };
 
 /**
- * Hard delete DRAFT listings (and delete storage objects); soft delete (deletedAt) all other statuses (keep storage objects).
- * Allowed for owner or ADMIN.
+ * Hard delete DRAFT listings (and delete storage objects); soft delete (deletedAt) all other statuses.
  */
 const deleteProduct = async (productId, actor) => {
   const existing = await findActiveProductOrThrow(productId);
@@ -447,6 +463,7 @@ const deleteProduct = async (productId, actor) => {
     const keysToDelete = (existing.images || []).map((img) => img.storageKey);
     await prisma.product.delete({ where: { id: productId } });
     await Promise.all(keysToDelete.map((key) => deleteVariants(key)));
+    await invalidateProductCaches(productId);
     return { id: productId, deletionType: 'hard' };
   }
 
@@ -455,74 +472,439 @@ const deleteProduct = async (productId, actor) => {
     data: { deletedAt: new Date() },
   });
 
+  await invalidateProductCaches(productId);
   return { id: productId, deletionType: 'soft' };
 };
 
 /**
- * Fetch product details with visibility enforcement and non-owner viewCount increment.
+ * Fetch product details:
+ * - Private statuses (DRAFT, EXPIRED, UNDER_REVIEW, SOLD) and owner/moderator views NEVER read or write cache.
+ * - Non-owner viewCount increment is NEVER cached and always writes directly to PostgreSQL.
+ * - Public non-owner reads reuse 30s cached payload for heavy joins/signing and apply fresh DB viewCount.
  */
 const getProductById = async (productId, viewer = null) => {
+  const detailCacheKey = `products:detail:${productId}`;
+  const isPrivilegedViewer = Boolean(
+    viewer && (viewer.role === 'ADMIN' || viewer.role === 'MODERATOR')
+  );
+
+  // Only inspect cache when the caller is anonymous or a regular student
+  if (!isPrivilegedViewer) {
+    const cached = await cache.get(detailCacheKey);
+    if (
+      cached &&
+      FEED_STATUSES.includes(cached.status) &&
+      (!viewer || viewer.id !== cached.sellerId)
+    ) {
+      const inc = await prisma.product.updateMany({
+        where: { id: productId, deletedAt: null, status: { in: FEED_STATUSES } },
+        data: { viewCount: { increment: 1 } },
+      });
+      if (inc.count > 0) {
+        const freshRow = await prisma.product.findUnique({
+          where: { id: productId },
+          select: { viewCount: true },
+        });
+        return {
+          ...cached,
+          viewCount: freshRow ? freshRow.viewCount : cached.viewCount + 1,
+        };
+      }
+      // Underlying status changed outside expected state; invalidate stale key and fall through
+      await cache.del(detailCacheKey);
+    }
+  }
+
   const existing = await findActiveProductOrThrow(productId);
 
   const isOwner = Boolean(viewer && viewer.id === existing.sellerId);
-  const isPrivileged = Boolean(viewer && (viewer.role === 'ADMIN' || viewer.role === 'MODERATOR'));
-  const isPublicStatus = PUBLIC_VISIBLE_STATUSES.includes(existing.status);
+  const isPublicVisible = PUBLIC_VISIBLE_STATUSES.includes(existing.status);
+  const isFeedPublic = FEED_STATUSES.includes(existing.status);
 
-  if (!isPublicStatus && !isOwner && !isPrivileged) {
+  if (!isPublicVisible && !isOwner && !isPrivilegedViewer) {
     throw new AppError('This listing is not publicly available.', 403);
   }
 
+  let record = existing;
   if (!isOwner) {
-    const incremented = await prisma.product.update({
+    record = await prisma.product.update({
       where: { id: productId },
       data: { viewCount: { increment: 1 } },
       include: PRODUCT_DETAIL_INCLUDE,
     });
-    return formatProductDetail(incremented);
   }
 
-  return formatProductDetail(existing);
+  const formatted = await formatProductDetail(record);
+
+  // Never cache non-public listings or owner/moderator views
+  if (isFeedPublic && !isOwner && !isPrivilegedViewer) {
+    await cache.set(detailCacheKey, formatted, config.cache.productDetailTtlSeconds);
+  }
+
+  return formatted;
 };
 
 /**
- * Public paginated marketplace feed (ACTIVE & RESERVED only, newest first).
- * Uses a single Prisma query with primary image include (zero N+1 queries) and local CPU signing.
+ * Normalizes query parameters for product search/filtering/sorting.
  */
-const listPublicProducts = async ({ page = 1, limit = 12, categoryId = null }) => {
-  const safePage = Math.max(1, Number(page) || 1);
-  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 12));
-  const skip = (safePage - 1) * safeLimit;
+const normalizeProductQuery = (raw = {}) => {
+  const q = raw.q !== undefined && raw.q !== null ? String(raw.q).trim().slice(0, 100) : '';
+  const page = Math.max(1, Number(raw.page) || 1);
+  const limit = Math.min(50, Math.max(1, Number(raw.limit) || 12));
+  const categoryId = raw.categoryId ? String(raw.categoryId).trim() : null;
+  const category = raw.category ? String(raw.category).trim().toLowerCase() : null;
+  const minPrice =
+    raw.minPrice !== undefined && raw.minPrice !== '' && raw.minPrice !== null
+      ? Number(raw.minPrice)
+      : null;
+  const maxPrice =
+    raw.maxPrice !== undefined && raw.maxPrice !== '' && raw.maxPrice !== null
+      ? Number(raw.maxPrice)
+      : null;
 
-  const where = {
-    deletedAt: null,
-    status: { in: FEED_STATUSES },
-    ...(categoryId ? { categoryId } : {}),
-  };
+  const conditions = raw.condition
+    ? Array.from(
+        new Set(
+          String(raw.condition)
+            .split(',')
+            .map((c) => c.trim().toUpperCase())
+            .filter(Boolean)
+        )
+      ).sort()
+    : [];
 
-  const [products, total] = await prisma.$transaction([
-    prisma.product.findMany({
-      where,
-      skip,
-      take: safeLimit,
-      orderBy: { createdAt: 'desc' },
-      include: PRODUCT_LIST_INCLUDE,
-    }),
-    prisma.product.count({ where }),
-  ]);
+  const availability = ['available', 'reserved', 'all'].includes(raw.availability)
+    ? raw.availability
+    : 'all';
+
+  let isNegotiable = null;
+  if (raw.isNegotiable === true || raw.isNegotiable === 'true') isNegotiable = true;
+  if (raw.isNegotiable === false || raw.isNegotiable === 'false') isNegotiable = false;
+
+  const verifiedSeller = raw.verifiedSeller === true || raw.verifiedSeller === 'true';
+
+  const defaultSort = q ? 'relevance' : 'newest';
+  const sort = raw.sort && ['newest', 'price_asc', 'price_desc', 'popularity', 'relevance'].includes(raw.sort)
+    ? raw.sort
+    : defaultSort;
+
+  if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) {
+    throw new AppError('minPrice cannot be greater than maxPrice.', 422);
+  }
+  if (sort === 'relevance' && !q) {
+    throw new AppError('sort=relevance is only valid when search query q is provided.', 422);
+  }
 
   return {
-    products: await Promise.all(products.map(formatProductListItem)),
-    pagination: {
-      total,
-      page: safePage,
-      limit: safeLimit,
-      totalPages: Math.ceil(total / safeLimit) || 1,
-    },
+    q,
+    page,
+    limit,
+    categoryId,
+    category,
+    minPrice,
+    maxPrice,
+    conditions,
+    availability,
+    isNegotiable,
+    verifiedSeller,
+    sort,
   };
 };
 
+const getAllowedStatusesForAvailability = (availability) => {
+  if (availability === 'available') return ['ACTIVE'];
+  if (availability === 'reserved') return ['RESERVED'];
+  return FEED_STATUSES;
+};
+
+const getPrismaOrderBy = (sort) => {
+  switch (sort) {
+    case 'price_asc':
+      return [{ price: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }];
+    case 'price_desc':
+      return [{ price: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }];
+    case 'popularity':
+      return [{ viewCount: 'desc' }, { publishedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }];
+    case 'newest':
+    default:
+      return [{ publishedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }, { id: 'desc' }];
+  }
+};
+
+const getSqlOrderBy = (sort) => {
+  switch (sort) {
+    case 'price_asc':
+      return Prisma.sql`ORDER BY p."price" ASC NULLS LAST, p."id" ASC`;
+    case 'price_desc':
+      return Prisma.sql`ORDER BY p."price" DESC NULLS LAST, p."id" DESC`;
+    case 'popularity':
+      return Prisma.sql`ORDER BY p."viewCount" DESC, p."publishedAt" DESC NULLS LAST, p."id" DESC`;
+    case 'newest':
+      return Prisma.sql`ORDER BY p."publishedAt" DESC NULLS LAST, p."createdAt" DESC, p."id" DESC`;
+    case 'relevance':
+    default:
+      return Prisma.sql`ORDER BY match_score DESC, p."publishedAt" DESC NULLS LAST, p."id" DESC`;
+  }
+};
+
+const buildSqlFilterClause = (params) => {
+  const statuses = getAllowedStatusesForAvailability(params.availability);
+  const clauses = [
+    Prisma.sql`p."deletedAt" IS NULL`,
+    Prisma.sql`p."status" IN (${Prisma.join(statuses.map((s) => Prisma.sql`${s}::"ListingStatus"`))})`,
+  ];
+
+  if (params.categoryId) {
+    clauses.push(Prisma.sql`p."categoryId" = ${params.categoryId}`);
+  } else if (params.category) {
+    clauses.push(Prisma.sql`c."slug" = ${params.category}`);
+  }
+
+  if (params.minPrice !== null) {
+    clauses.push(Prisma.sql`p."price" >= ${params.minPrice}`);
+  }
+
+  if (params.maxPrice !== null) {
+    clauses.push(Prisma.sql`p."price" <= ${params.maxPrice}`);
+  }
+
+  if (params.conditions.length > 0) {
+    clauses.push(
+      Prisma.sql`p."condition" IN (${Prisma.join(params.conditions.map((c) => Prisma.sql`${c}::"Condition"`))})`
+    );
+  }
+
+  if (params.isNegotiable !== null) {
+    clauses.push(Prisma.sql`p."isNegotiable" = ${params.isNegotiable}`);
+  }
+
+  if (params.verifiedSeller) {
+    clauses.push(Prisma.sql`u."isVerifiedStudent" = true`);
+  }
+
+  return Prisma.join(clauses, ' AND ');
+};
+
+const runKeywordSearch = async (params) => {
+  const filterSql = buildSqlFilterClause(params);
+  const orderSql = getSqlOrderBy(params.sort);
+  const skip = (params.page - 1) * params.limit;
+  const q = params.q;
+
+  // Step 1: Primary GIN full-text search (websearch_to_tsquery + ts_rank on weighted A/B/C vector)
+  const ftCountRows = await prisma.$queryRaw`
+    SELECT COUNT(*)::int AS total
+    FROM "products" p
+    LEFT JOIN "categories" c ON c."id" = p."categoryId"
+    INNER JOIN "users" u ON u."id" = p."sellerId"
+    WHERE ${filterSql}
+      AND p."searchVector" @@ websearch_to_tsquery('english', ${q})
+  `;
+  const ftTotal = ftCountRows[0]?.total || 0;
+
+  let total = ftTotal;
+  let idRows;
+
+  if (ftTotal >= 3) {
+    idRows = await prisma.$queryRaw`
+      SELECT
+        p."id",
+        (
+          ts_rank(p."searchVector", websearch_to_tsquery('english', ${q})) * 10
+          + CASE WHEN LOWER(p."title") LIKE ${`${q.toLowerCase()}%`} THEN 5 ELSE 0 END
+        )::float8 AS match_score
+      FROM "products" p
+      LEFT JOIN "categories" c ON c."id" = p."categoryId"
+      INNER JOIN "users" u ON u."id" = p."sellerId"
+      WHERE ${filterSql}
+        AND p."searchVector" @@ websearch_to_tsquery('english', ${q})
+      ${orderSql}
+      LIMIT ${params.limit}
+      OFFSET ${skip}
+    `;
+  } else {
+    // Step 2: Hybrid full-text + GIN trigram similarity fallback for typos/prefixes
+    const hybridResult = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SET LOCAL pg_trgm.word_similarity_threshold = 0.35`;
+      await tx.$executeRaw`SET LOCAL pg_trgm.similarity_threshold = 0.25`;
+
+      const totalRows = await tx.$queryRaw`
+        SELECT COUNT(*)::int AS total
+        FROM "products" p
+        LEFT JOIN "categories" c ON c."id" = p."categoryId"
+        INNER JOIN "users" u ON u."id" = p."sellerId"
+        WHERE ${filterSql}
+          AND (
+            p."searchVector" @@ websearch_to_tsquery('english', ${q})
+            OR ${q} <% p."title"
+            OR p."title" % ${q}
+            OR p."title" ILIKE ${`%${q}%`}
+          )
+      `;
+
+      const pageIdRows = await tx.$queryRaw`
+        SELECT
+          p."id",
+          (
+            CASE
+              WHEN p."searchVector" @@ websearch_to_tsquery('english', ${q})
+                THEN ts_rank(p."searchVector", websearch_to_tsquery('english', ${q})) * 10 + 1
+              ELSE 0
+            END
+            + GREATEST(word_similarity(${q}, p."title"), similarity(p."title", ${q}))
+            + CASE WHEN LOWER(p."title") LIKE ${`${q.toLowerCase()}%`} THEN 3 ELSE 0 END
+          )::float8 AS match_score
+        FROM "products" p
+        LEFT JOIN "categories" c ON c."id" = p."categoryId"
+        INNER JOIN "users" u ON u."id" = p."sellerId"
+        WHERE ${filterSql}
+          AND (
+            p."searchVector" @@ websearch_to_tsquery('english', ${q})
+            OR ${q} <% p."title"
+            OR p."title" % ${q}
+            OR p."title" ILIKE ${`%${q}%`}
+          )
+        ${orderSql}
+        LIMIT ${params.limit}
+        OFFSET ${skip}
+      `;
+
+      return { total: totalRows[0]?.total || 0, pageIdRows };
+    });
+
+    total = hybridResult.total;
+    idRows = hybridResult.pageIdRows;
+  }
+
+  if (!idRows || idRows.length === 0) {
+    return { products: [], total };
+  }
+
+  const orderedIds = idRows.map((r) => r.id);
+  const fetched = await prisma.product.findMany({
+    where: { id: { in: orderedIds } },
+    include: PRODUCT_LIST_INCLUDE,
+  });
+
+  const byId = new Map(fetched.map((p) => [p.id, p]));
+  const orderedProducts = orderedIds.map((id) => byId.get(id)).filter(Boolean);
+
+  return {
+    products: await Promise.all(orderedProducts.map(formatProductListItem)),
+    total,
+  };
+};
+
+const shouldRecordPopularTerm = (term) => {
+  if (!term || term.length < 2 || term.length > 50) return false;
+  if (!/[a-z0-9]/i.test(term)) return false;
+  // Exclude email-like or long digit sequences (PII protection)
+  if (term.includes('@') || /\d{9,}/.test(term)) return false;
+  return true;
+};
+
+const recordExecutedSearch = async (rawTerm, totalResults, clientIp = 'unknown') => {
+  if (!totalResults || totalResults < 1) return;
+  const normalized = String(rawTerm || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  if (!shouldRecordPopularTerm(normalized)) return;
+
+  const ipHash = crypto.createHash('sha256').update(String(clientIp || 'unknown')).digest('hex').slice(0, 16);
+  const termHash = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+  const allowed = await cache.setIfAbsent(`search:ip:${ipHash}:${termHash}`, '1', 60);
+  if (!allowed) return;
+
+  await cache.zIncrBy('search:popular', normalized, 1, 200);
+};
+
 /**
- * Seller's own listings with optional ?status= filter (zero N+1 queries).
+ * Public search, filter, sort & paginated marketplace feed (ACTIVE & RESERVED only).
+ * Cached by version + normalized params hash (TTL 60s).
+ */
+const listPublicProducts = async (rawQuery = {}) => {
+  const { clientIp = 'unknown', onCacheStatus = null, ...rest } = rawQuery;
+  const params = normalizeProductQuery(rest);
+  const skip = (params.page - 1) * params.limit;
+
+  const version = await cache.getVersion(PRODUCTS_VERSION_KEY);
+  const paramHash = crypto.createHash('sha256').update(JSON.stringify(params)).digest('hex');
+  const cacheKey = `products:list:v${version}:${paramHash}`;
+
+  const payload = await cache.getOrSet(
+    cacheKey,
+    Math.min(config.cache.defaultTtlSeconds, 60),
+    async () => {
+      let formattedProducts;
+      let total;
+
+      if (params.q) {
+        const searchResult = await runKeywordSearch(params);
+        formattedProducts = searchResult.products;
+        total = searchResult.total;
+      } else {
+        const statuses = getAllowedStatusesForAvailability(params.availability);
+        const where = {
+          deletedAt: null,
+          status: { in: statuses },
+          ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+          ...(!params.categoryId && params.category
+            ? { category: { slug: params.category } }
+            : {}),
+          ...(params.minPrice !== null || params.maxPrice !== null
+            ? {
+                price: {
+                  ...(params.minPrice !== null ? { gte: params.minPrice } : {}),
+                  ...(params.maxPrice !== null ? { lte: params.maxPrice } : {}),
+                },
+              }
+            : {}),
+          ...(params.conditions.length > 0 ? { condition: { in: params.conditions } } : {}),
+          ...(params.isNegotiable !== null ? { isNegotiable: params.isNegotiable } : {}),
+          ...(params.verifiedSeller ? { seller: { isVerifiedStudent: true } } : {}),
+        };
+
+        const [products, count] = await prisma.$transaction([
+          prisma.product.findMany({
+            where,
+            skip,
+            take: params.limit,
+            orderBy: getPrismaOrderBy(params.sort),
+            include: PRODUCT_LIST_INCLUDE,
+          }),
+          prisma.product.count({ where }),
+        ]);
+
+        formattedProducts = await Promise.all(products.map(formatProductListItem));
+        total = count;
+      }
+
+      const totalPages = Math.ceil(total / params.limit) || 1;
+
+      return {
+        products: formattedProducts,
+        pagination: {
+          total,
+          page: params.page,
+          limit: params.limit,
+          totalPages,
+          hasNext: params.page < totalPages,
+        },
+      };
+    },
+    { onStatus: onCacheStatus }
+  );
+
+  if (params.q) {
+    await recordExecutedSearch(params.q, payload?.pagination?.total || 0, clientIp);
+  }
+
+  return payload;
+};
+
+/**
+ * Seller's own listings with optional ?status= filter.
  */
 const listMyProducts = async (sellerId, { page = 1, limit = 20, status = null }) => {
   const safePage = Math.max(1, Number(page) || 1);
@@ -546,13 +928,16 @@ const listMyProducts = async (sellerId, { page = 1, limit = 20, status = null })
     prisma.product.count({ where }),
   ]);
 
+  const totalPages = Math.ceil(total / safeLimit) || 1;
+
   return {
     products: await Promise.all(products.map(formatProductListItem)),
     pagination: {
       total,
       page: safePage,
       limit: safeLimit,
-      totalPages: Math.ceil(total / safeLimit) || 1,
+      totalPages,
+      hasNext: safePage < totalPages,
     },
   };
 };
@@ -560,6 +945,8 @@ const listMyProducts = async (sellerId, { page = 1, limit = 20, status = null })
 module.exports = {
   TRANSITION_MAP,
   EDITABLE_STATUSES,
+  PRODUCTS_VERSION_KEY,
+  invalidateProductCaches,
   createProduct,
   updateProduct,
   publishProduct,
@@ -569,4 +956,5 @@ module.exports = {
   getProductById,
   listPublicProducts,
   listMyProducts,
+  normalizeProductQuery,
 };
