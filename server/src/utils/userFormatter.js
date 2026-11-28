@@ -13,6 +13,7 @@ const formatUserWithAvatar = async (user) => {
 
   return {
     ...rest,
+    hasPassword: typeof user.hasPassword === 'boolean' ? user.hasPassword : Boolean(passwordHash),
     profilePictureUrl,
   };
 };

@@ -70,6 +70,7 @@ apiClient.interceptors.request.use(
 const AUTH_SKIP_RETRY_PATHS = [
   '/api/auth/login',
   '/api/auth/signup',
+  '/api/auth/google',
   '/api/auth/refresh',
   '/api/auth/logout',
 ];
@@ -122,8 +123,11 @@ export const resolveAssetUrl = (assetPath) => {
 export const checkServerHealth = () => apiClient.get('/api/health');
 export const checkAiHealth = () => aiClient.get('/health');
 export const authApi = {
+  getConfig: () => apiClient.get('/api/auth/config'),
   signup: (data) => apiClient.post('/api/auth/signup', data),
   login: (data) => apiClient.post('/api/auth/login', data),
+  google: (data) => apiClient.post('/api/auth/google', data),
+  setPassword: (data) => apiClient.post('/api/auth/set-password', data),
   refresh: () => performRefresh(),
   logout: () => apiClient.post('/api/auth/logout'),
   logoutAll: () => apiClient.post('/api/auth/logout-all'),

@@ -79,6 +79,8 @@ jobs:
       POPULAR_CACHE_TTL_SECONDS: 300
       SUGGEST_CACHE_TTL_SECONDS: 60
       PRODUCT_DETAIL_CACHE_TTL_SECONDS: 30
+      GOOGLE_CLIENT_ID: 'ci-dummy-google-client-id.apps.googleusercontent.com'
+      GOOGLE_AUTO_VERIFY_COLLEGE: 'true'
 
     steps:
       - name: Checkout Repository
@@ -122,6 +124,8 @@ jobs:
   client-ci:
     name: Client (React + Vite + Tailwind)
     runs-on: ubuntu-latest
+    env:
+      VITE_GOOGLE_CLIENT_ID: ''
 
     steps:
       - name: Checkout Repository

@@ -2,9 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { MailCheck, ShieldCheck, AlertCircle, Clock, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { m } from 'framer-motion';
 import { verificationApi } from '../services/api';
 import { useAuthStore } from '../store';
 import { VerifiedBadge } from '../components/VerifiedBadge';
+import { tapFeedback, MOTION_SPRINGS } from '../lib/motion';
 
 const ALLOWED_COLLEGE_DOMAIN = 'chitkara.edu.in';
 const COLLEGE_EMAIL_ERROR = 'Please use your college email ending with @chitkara.edu.in';
@@ -217,7 +219,13 @@ export const VerificationPage = () => {
 
         {step === 'verified' && (
           <div className="p-6 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-3">
-            <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+            <m.div
+              initial={{ scale: 0, rotate: -25 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={MOTION_SPRINGS.pop}
+            >
+              <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+            </m.div>
             <h2 className="text-lg font-bold text-white">You&apos;re a Verified Student!</h2>
             <p className="text-sm text-slate-300">
               Verified college email:{' '}
