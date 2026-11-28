@@ -75,6 +75,49 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  googleLogin: async ({ credential }) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await authApi.google({ credential });
+      const { user, accessToken } = res.data;
+      set({
+        user,
+        accessToken,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      });
+      return user;
+    } catch (err) {
+      set({
+        isLoading: false,
+        error: err.message || 'Google login failed',
+      });
+      throw err;
+    }
+  },
+
+  setPassword: async ({ password }) => {
+    set({ isLoading: true, error: null });
+    try {
+      await authApi.setPassword({ password });
+      const currentUser = get().user;
+      if (currentUser) {
+        set({
+          user: { ...currentUser, hasPassword: true },
+          isLoading: false,
+          error: null,
+        });
+      }
+    } catch (err) {
+      set({
+        isLoading: false,
+        error: err.message || 'Failed to set password',
+      });
+      throw err;
+    }
+  },
+
   logout: async () => {
     try {
       await authApi.logout();

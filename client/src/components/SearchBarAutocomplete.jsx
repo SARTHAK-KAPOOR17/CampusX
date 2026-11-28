@@ -1,7 +1,9 @@
 // client/src/components/SearchBarAutocomplete.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, TrendingUp, Tag, ShoppingBag } from 'lucide-react';
+import { m, AnimatePresence } from 'framer-motion';
 import { searchApi } from '../services/api';
+import { slideDown } from '../lib/motion';
 
 const HighlightMatch = ({ text, query }) => {
   const cleanQuery = (query || '').trim();
@@ -221,53 +223,59 @@ export const SearchBarAutocomplete = ({
       </form>
 
       {/* Autocomplete / Popular Dropdown */}
-      {isOpen && (displayItems.length > 0 || loadingSuggest) && (
-        <div
-          role="listbox"
-          className="absolute left-0 right-0 mt-1.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden z-50"
-        >
-          <div className="px-3 py-1.5 bg-slate-800/80 border-b border-slate-700/80 flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              {showingPopular ? 'Popular searches' : 'Suggestions'}
-            </span>
-            {loadingSuggest && (
-              <span className="text-[11px] text-blue-400">Searching...</span>
-            )}
-          </div>
+      <AnimatePresence>
+        {isOpen && (displayItems.length > 0 || loadingSuggest) && (
+          <m.div
+            variants={slideDown}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            role="listbox"
+            className="absolute left-0 right-0 mt-1.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden z-50"
+          >
+            <div className="px-3 py-1.5 bg-slate-800/80 border-b border-slate-700/80 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                {showingPopular ? 'Popular searches' : 'Suggestions'}
+              </span>
+              {loadingSuggest && (
+                <span className="text-[11px] text-blue-400">Searching...</span>
+              )}
+            </div>
 
-          <ul className="max-h-72 overflow-y-auto divide-y divide-slate-800/70">
-            {displayItems.map((item, idx) => (
-              <li key={`${item.type}-${item.text}-${idx}`}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={idx === activeIndex}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    commitItem(item);
-                  }}
-                  onMouseEnter={() => setActiveIndex(idx)}
-                  className={`w-full px-3.5 py-2.5 text-left text-sm flex items-center justify-between gap-2 transition ${
-                    idx === activeIndex
-                      ? 'bg-blue-600/20 text-white'
-                      : 'text-slate-200 hover:bg-slate-800'
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5 min-w-0 truncate">
-                    {renderIcon(item.type)}
-                    <span className="truncate">
-                      <HighlightMatch text={item.text} query={trimmedQuery} />
+            <ul className="max-h-72 overflow-y-auto divide-y divide-slate-800/70">
+              {displayItems.map((item, idx) => (
+                <li key={`${item.type}-${item.text}-${idx}`}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={idx === activeIndex}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      commitItem(item);
+                    }}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                    className={`w-full px-3.5 py-2.5 text-left text-sm flex items-center justify-between gap-2 transition ${
+                      idx === activeIndex
+                        ? 'bg-blue-600/20 text-white'
+                        : 'text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5 min-w-0 truncate">
+                      {renderIcon(item.type)}
+                      <span className="truncate">
+                        <HighlightMatch text={item.text} query={trimmedQuery} />
+                      </span>
                     </span>
-                  </span>
-                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
-                    {item.type}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+                    <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+                      {item.type}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

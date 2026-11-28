@@ -11,12 +11,15 @@ import {
   SlidersHorizontal,
   X,
   ArrowUpDown,
+  Heart,
 } from 'lucide-react';
+import { m, AnimatePresence } from 'framer-motion';
 import { categoriesApi, productsApi } from '../services/api';
 import { ConditionBadge, ListingStatusBadge } from '../components/ListingBadges';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 import { SmartImage } from '../components/SmartImage';
 import { SearchBarAutocomplete } from '../components/SearchBarAutocomplete';
+import { staggerContainer, staggerItem, tapFeedback, MOTION_SPRINGS } from '../lib/motion';
 
 const CONDITIONS = [
   { value: 'NEW', label: 'New' },
@@ -41,6 +44,16 @@ export const MarketplacePage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [wishlist, setWishlist] = useState(() => new Set());
+
+  const toggleWishlist = (id) => {
+    setWishlist((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Extract state from URL search params (shareable & back-button friendly)
   const q = searchParams.get('q') || '';
@@ -485,28 +498,40 @@ export const MarketplacePage = () => {
         </aside>
 
         {/* Mobile Slide-Over Filter Drawer */}
-        {mobileFiltersOpen && (
-          <div className="fixed inset-0 z-50 lg:hidden flex">
-            <div
-              className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm"
-              onClick={() => setMobileFiltersOpen(false)}
-            />
-            <div className="relative ml-auto w-80 max-w-full bg-slate-900 border-l border-slate-700 h-full overflow-y-auto p-6 shadow-2xl space-y-6">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <span className="font-bold text-white">Filter Listings</span>
-                <button
-                  type="button"
-                  onClick={() => setMobileFiltersOpen(false)}
-                  aria-label="Close filters"
-                  className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              {filterPanelContent}
+        <AnimatePresence>
+          {mobileFiltersOpen && (
+            <div className="fixed inset-0 z-50 lg:hidden flex">
+              <m.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm"
+                onClick={() => setMobileFiltersOpen(false)}
+              />
+              <m.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={MOTION_SPRINGS.modal}
+                className="relative ml-auto w-80 max-w-full bg-slate-900 border-l border-slate-700 h-full overflow-y-auto p-6 shadow-2xl space-y-6"
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <span className="font-bold text-white">Filter Listings</span>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFiltersOpen(false)}
+                    aria-label="Close filters"
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                {filterPanelContent}
+              </m.div>
             </div>
-          </div>
-        )}
+          )}
+        </AnimatePresence>
 
         {/* Right Results Column */}
         <div className="flex-1 min-w-0 w-full space-y-5">
@@ -565,7 +590,7 @@ export const MarketplacePage = () => {
               {[1, 2, 3, 4, 5, 6].map((n) => (
                 <div
                   key={n}
-                  className="h-80 rounded-2xl bg-slate-800/60 border border-slate-700/60 animate-pulse"
+                  className="h-80 rounded-2xl border border-slate-700/60 skeleton-shimmer"
                 />
               ))}
             </div>
@@ -597,63 +622,105 @@ export const MarketplacePage = () => {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                {products.map((product) => (
-                  <Link
+              <m.div
+                variants={staggerContainer(0.04)}
+                initial="initial"
+                animate="animate"
+                className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5"
+              >
+                {products.map((product, idx) => (
+                  <m.div
                     key={product.id}
-                    to={`/products/${product.id}`}
-                    className="group bg-slate-800/80 hover:bg-slate-800 rounded-2xl border border-slate-700/80 hover:border-blue-500/50 overflow-hidden transition flex flex-col justify-between shadow-lg"
+                    variants={idx < 12 ? staggerItem : undefined}
+                    whileHover={{ y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="h-full flex flex-col"
                   >
-                    <div>
-                      <div className="aspect-[4/3] w-full bg-gradient-to-br from-slate-700/50 via-slate-800 to-slate-900 relative border-b border-slate-700/60 overflow-hidden">
-                        <SmartImage
-                          src={product.primaryImage?.thumbUrl}
-                          blurDataUrl={product.primaryImage?.blurDataUrl}
-                          alt={product.title}
-                          loading="lazy"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          onUrlExpired={fetchProducts}
-                        />
-                        {product.status === 'RESERVED' && (
-                          <div className="absolute top-3 right-3 z-10">
-                            <ListingStatusBadge status="RESERVED" />
-                          </div>
-                        )}
-                      </div>
+                    <Link
+                      to={`/products/${product.id}`}
+                      className="group bg-slate-800/80 hover:bg-slate-800 rounded-2xl border border-slate-700/80 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 overflow-hidden transition flex flex-col justify-between shadow-lg h-full"
+                    >
+                      <div>
+                        <div className="aspect-[4/3] w-full bg-gradient-to-br from-slate-700/50 via-slate-800 to-slate-900 relative border-b border-slate-700/60 overflow-hidden">
+                          <SmartImage
+                            src={product.primaryImage?.thumbUrl}
+                            blurDataUrl={product.primaryImage?.blurDataUrl}
+                            alt={product.title}
+                            loading="lazy"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            onUrlExpired={fetchProducts}
+                          />
 
-                      <div className="p-4 space-y-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-300 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-md">
-                            <Tag className="w-3 h-3" />
-                            {product.category?.name || 'General'}
-                          </span>
-                          <ConditionBadge condition={product.condition} />
+                          {/* Wishlist Heart Pop Button */}
+                          <button
+                            type="button"
+                            aria-label="Save to wishlist"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toggleWishlist(product.id);
+                            }}
+                            className="absolute top-3 left-3 z-10 w-8 h-8 rounded-full bg-slate-950/70 hover:bg-slate-900 border border-slate-700/60 flex items-center justify-center transition"
+                          >
+                            <m.div
+                              animate={
+                                wishlist.has(product.id)
+                                  ? { scale: [0.8, 1.25, 1] }
+                                  : { scale: 1 }
+                              }
+                              transition={{ duration: 0.25 }}
+                            >
+                              <Heart
+                                className={`w-4 h-4 ${
+                                  wishlist.has(product.id)
+                                    ? 'fill-rose-500 text-rose-500'
+                                    : 'text-slate-300'
+                                }`}
+                              />
+                            </m.div>
+                          </button>
+
+                          {product.status === 'RESERVED' && (
+                            <div className="absolute top-3 right-3 z-10">
+                              <ListingStatusBadge status="RESERVED" />
+                            </div>
+                          )}
                         </div>
 
-                        <h3 className="font-bold text-white text-base line-clamp-2 group-hover:text-blue-300 transition">
-                          {product.title}
-                        </h3>
-
-                        <p className="text-xl font-extrabold text-emerald-400">
-                          ₹{Number(product.price || 0).toLocaleString('en-IN')}
-                          {product.isNegotiable && (
-                            <span className="ml-2 text-[11px] font-normal text-slate-400">
-                              Negotiable
+                        <div className="p-4 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-300 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-md">
+                              <Tag className="w-3 h-3" />
+                              {product.category?.name || 'General'}
                             </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
+                            <ConditionBadge condition={product.condition} />
+                          </div>
 
-                    <div className="px-4 py-3 bg-slate-900/50 border-t border-slate-700/60 flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium text-slate-300 truncate">
-                        {product.seller?.name || 'Student'}
-                      </span>
-                      {product.seller?.isVerifiedStudent && <VerifiedBadge compact />}
-                    </div>
-                  </Link>
+                          <h3 className="font-bold text-white text-base line-clamp-2 group-hover:text-blue-300 transition">
+                            {product.title}
+                          </h3>
+
+                          <p className="text-xl font-extrabold text-emerald-400">
+                            ₹{Number(product.price || 0).toLocaleString('en-IN')}
+                            {product.isNegotiable && (
+                              <span className="ml-2 text-[11px] font-normal text-slate-400">
+                                Negotiable
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="px-4 py-3 bg-slate-900/50 border-t border-slate-700/60 flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-slate-300 truncate">
+                          {product.seller?.name || 'Student'}
+                        </span>
+                        {product.seller?.isVerifiedStudent && <VerifiedBadge compact />}
+                      </div>
+                    </Link>
+                  </m.div>
                 ))}
-              </div>
+              </m.div>
 
               {/* Pagination */}
               {pagination.totalPages > 1 && (

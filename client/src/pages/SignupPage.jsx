@@ -2,7 +2,10 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserPlus, User, Mail, Lock, AlertCircle } from 'lucide-react';
+import { m } from 'framer-motion';
 import { useAuthStore } from '../store';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
+import { tapFeedback, slideDown } from '../lib/motion';
 
 export const SignupPage = () => {
   const [name, setName] = useState('');
@@ -80,14 +83,28 @@ export const SignupPage = () => {
         </div>
 
         {serverError && (
-          <div
+          <m.div
+            variants={slideDown}
+            initial="initial"
+            animate="animate"
             role="alert"
             className="flex items-start gap-2.5 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm"
           >
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
             <span>{serverError}</span>
-          </div>
+          </m.div>
         )}
+
+        <GoogleSignInButton redirectTo="/dashboard" />
+
+        <div className="relative my-2">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-700/80"></div>
+          </div>
+          <div className="relative flex justify-center text-xs text-slate-400 select-none">
+            <span className="bg-slate-800 px-3 tracking-widest font-mono">or</span>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
@@ -168,13 +185,14 @@ export const SignupPage = () => {
             )}
           </div>
 
-          <button
+          <m.button
+            whileTap={tapFeedback.whileTap}
             type="submit"
             disabled={isLoading}
             className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition shadow-lg shadow-blue-600/20"
           >
             {isLoading ? 'Creating account...' : 'Create Account'}
-          </button>
+          </m.button>
         </form>
 
         <p className="text-center text-xs text-slate-400">
