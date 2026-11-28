@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { m, AnimatePresence } from 'framer-motion';
 import { productsApi, resolveAssetUrl } from '../services/api';
+import { useWishlistStore } from '../store';
 import { ConditionBadge, ListingStatusBadge } from '../components/ListingBadges';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 import { SmartImage } from '../components/SmartImage';
@@ -31,7 +32,14 @@ export const ProductDetailPage = () => {
   const [error, setError] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
+  const { has: isInWishlist, toggle: toggleWishlistInStore } = useWishlistStore();
+  const isSaved = product ? isInWishlist(product.id) : false;
+
+  const handleToggleWishlist = () => {
+    if (product) {
+      toggleWishlistInStore(product);
+    }
+  };
 
   const loadProduct = useCallback(async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
@@ -226,7 +234,7 @@ export const ProductDetailPage = () => {
               <m.button
                 whileTap={tapFeedback.whileTap}
                 type="button"
-                onClick={() => setIsSaved(!isSaved)}
+                onClick={handleToggleWishlist}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-semibold transition shrink-0 ${
                   isSaved
                     ? 'bg-rose-500/15 border-rose-500/30 text-rose-300'
@@ -235,9 +243,13 @@ export const ProductDetailPage = () => {
               >
                 <m.div
                   animate={isSaved ? { scale: [0.8, 1.25, 1] } : { scale: 1 }}
-                  transition={{ duration: 0.25 }}
+                  transition={{ duration: 0.25, ease: 'easeOut' }}
                 >
-                  <Heart className={`w-4 h-4 ${isSaved ? 'fill-rose-500 text-rose-500' : ''}`} />
+                  <Heart
+                    className={`w-4 h-4 transition-colors duration-200 ${
+                      isSaved ? 'fill-rose-500 text-rose-500' : 'text-slate-300'
+                    }`}
+                  />
                 </m.div>
                 <span>{isSaved ? 'Saved' : 'Wishlist'}</span>
               </m.button>

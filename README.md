@@ -28,7 +28,7 @@
 | **Day 4** | **Marketplace Core: Listings, Categories, Conditions & Lifecycle** | ✅ Done | `Category` & `Product` Prisma models + idempotent category seed, Draft/Publish workflow (`requireVerifiedStudent`), central lifecycle state machine (`DRAFT`, `ACTIVE`, `RESERVED`, `SOLD`, `EXPIRED`, `UNDER_REVIEW`), soft-delete, view counting, moderator review hook, hourly expiry cron (`node-cron`), and Marketplace/Sell/Detail/My Listings UI. |
 | **Day 5** | **Product Images & Cloud Storage (+ Day 5B Verification Restriction)** | ✅ Done | S3-compatible storage abstraction (`MinIO` / AWS S3 / R2), `sharp` optimization pipeline (magic bytes, EXIF/GPS strip, 3 WebP variants + blur placeholder), `ProductImage` & `avatarKey` migration, presigned/CDN URLs, multi-image uploader, gallery & lightbox UI, and `@chitkara.edu.in` strict student email enforcement. |
 | **Day 6** | **Search Engine, Filters, Sorting & Redis Caching** | ✅ Done | PostgreSQL `tsvector` (`A`/`B`/`C`) + `pg_trgm` GIN search & typo fallback, multi-facet filters, stable `id` tie-broken sorting, Redis (`ioredis`) fail-open cache (`SCAN`, stampede lock, versioned invalidation), Redis-backed rate limiting, 60s auth cache with immediate invalidation, autocomplete & `search:popular` tracking, responsive Client search/filter UI. |
-| **Day 7B** | **Google Sign-In & UI Animation System** | 🚧 In Progress | Google Identity Services ID-token auth, account linking security (password nulling & token revocation for unverified accounts), `@chitkara.edu.in` auto-student verification, Framer Motion (`LazyMotion` + `domAnimation`), route transitions, staggered grid, card hover lift, tab `layoutId`, modal springs, count-up stats, `prefers-reduced-motion`. |
+| **Day 7B** | **Google Sign-In & UI Animation System** | ✅ Done | Google Identity Services ID-token auth, account linking security, `@chitkara.edu.in` auto-student verification, Framer Motion (`LazyMotion` + `domAnimation`), route transitions, staggered grid, card hover lift, sliding tab underline (`layoutId`), modal springs, notification bell badge pop & animated dropdown, wishlist heart pop & fill transition, first-load stagger, count-up stats, `prefers-reduced-motion`. |
 | **Day 7** | **AI Service: Auto-Categorization & Tagging** | ⏳ Planned | FastAPI text processing, zero-shot/embedding-based category prediction, auto-tagging of item condition and academic course codes. |
 | **Day 8** | **AI Service: Price Recommendation Engine** | ⏳ Planned | Pricing algorithms analyzing historical campus transactions, MSRP depreciation models, fair-market price badges. |
 | **Day 9** | **Real-Time Buyer-Seller Messaging** | ⏳ Planned | WebSocket / Socket.io architecture, instant direct messaging, chat history persistence, unread badge counts. |
@@ -502,11 +502,28 @@ CampusX utilizes `framer-motion` for fluid, professional micro-interactions whil
 2. **Marketplace Grid**: Product listings enter with a clean `40ms` stagger (capped at top 12 items to prevent frame drops).
 3. **Product Card Hover**: Subtle `-4px` vertical elevation lift, soft shadow deepening, and `1.03` image zoom scale.
 4. **Interactive Tap**: Button click feedback with `whileTap={{ scale: 0.98 }}`.
-5. **Wishlist Pop**: Heart button toggle triggers elastic keyframe bounce (`0.8 -> 1.2 -> 1.0`).
-6. **Modals & Drawers**: Backdrop fade with spring-driven scale/slide-in entrance.
-7. **Tabs Indicator**: Active tab pill transitions smoothly between tabs using Framer Motion `layoutId="activeTab"`.
-8. **Dashboard Counters**: Numerical metrics count up smoothly on viewport entry over `600ms`.
-9. **Form Feedback**: Validation error messages slide down and fade in with zero layout jank.
+5. **Wishlist Heart Pop & Fill Transition**: Heart button toggle triggers elastic keyframe bounce (`scale: [0.8, 1.25, 1]`) and smooth color fill transition (`transition-colors duration-200 fill-rose-500 text-rose-500`).
+6. **Notification Bell & Badge Pop**: Notification bell unread count badge pops (`scale: [0.8, 1.35, 1]`) on count changes; dropdown fades and slides in/out with `<AnimatePresence>` (`slideDown`).
+7. **Wishlist & Notification Lists**: Staggered fade-in on first load only (`staggerContainer` + `staggerItem`).
+8. **Dashboard Counters**: Numerical metrics count up smoothly on viewport entry over `600ms` using `AnimatedCounter.jsx`.
+9. **Sliding Tab Underline**: Active tab indicator smoothly slides between tabs using Framer Motion `layoutId="activeTabUnderline"`.
+10. **Modals & Drawers**: Backdrop fade with spring-driven scale/slide-in entrance.
+11. **Form Feedback**: Validation error messages slide down and fade in with zero layout jank.
+
+---
+
+## 📸 Feature Screenshots
+
+Full high-resolution screenshots of all major frontend features are documented in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md):
+
+- **Campus Marketplace**: [`docs/screenshots/01-marketplace-grid.png`](docs/screenshots/01-marketplace-grid.png)
+- **Wishlist Heart Pop**: [`docs/screenshots/02-wishlist-heart-pop.png`](docs/screenshots/02-wishlist-heart-pop.png)
+- **Notification Bell Dropdown**: [`docs/screenshots/03-notification-bell-dropdown.png`](docs/screenshots/03-notification-bell-dropdown.png)
+- **Product Detail & Gallery**: [`docs/screenshots/04-product-detail.png`](docs/screenshots/04-product-detail.png)
+- **Google Sign-In & Login**: [`docs/screenshots/05-login-google-signin.png`](docs/screenshots/05-login-google-signin.png)
+- **Dashboard Stats & Underline**: [`docs/screenshots/06-dashboard-animated-stats.png`](docs/screenshots/06-dashboard-animated-stats.png)
+- **Dashboard Saved Wishlist**: [`docs/screenshots/07-dashboard-saved-wishlist.png`](docs/screenshots/07-dashboard-saved-wishlist.png)
+- **User Profile & Verification**: [`docs/screenshots/08-user-profile.png`](docs/screenshots/08-user-profile.png)
 
 ---
 

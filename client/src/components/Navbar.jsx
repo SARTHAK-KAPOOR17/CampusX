@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '../store';
 import { VerifiedBadge } from './VerifiedBadge';
 import { SearchBarAutocomplete } from './SearchBarAutocomplete';
+import { NotificationBell } from './NotificationBell';
 
 export const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuthStore();
@@ -94,6 +95,7 @@ export const Navbar = () => {
         </div>
 
         <div className="flex items-center space-x-2 shrink-0">
+          <NotificationBell />
           {isAuthenticated ? (
             <>
               <Link

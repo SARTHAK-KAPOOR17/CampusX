@@ -1,6 +1,6 @@
 // client/src/App.jsx
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { LazyMotion, domAnimation, MotionConfig, AnimatePresence, m } from 'framer-motion';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -16,10 +16,18 @@ import { MarketplacePage } from './pages/MarketplacePage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { SellPage } from './pages/SellPage';
 import { MyListingsPage } from './pages/MyListingsPage';
-import { useAuthStore } from './store';
+import { useAuthStore, useWishlistStore, useNotificationStore } from './store';
 
 function AnimatedAppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    window.__authStore = useAuthStore;
+    window.__wishlistStore = useWishlistStore;
+    window.__notificationStore = useNotificationStore;
+    window.__navigate = navigate;
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 flex flex-col justify-between">

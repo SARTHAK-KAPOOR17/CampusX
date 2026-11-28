@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { m, AnimatePresence } from 'framer-motion';
 import { categoriesApi, productsApi } from '../services/api';
+import { useWishlistStore } from '../store';
 import { ConditionBadge, ListingStatusBadge } from '../components/ListingBadges';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 import { SmartImage } from '../components/SmartImage';
@@ -44,15 +45,10 @@ export const MarketplacePage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [wishlist, setWishlist] = useState(() => new Set());
+  const { has: isInWishlist, toggle: toggleWishlistInStore } = useWishlistStore();
 
-  const toggleWishlist = (id) => {
-    setWishlist((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const handleToggleWishlist = (product) => {
+    toggleWishlistInStore(product);
   };
 
   // Extract state from URL search params (shareable & back-button friendly)
@@ -658,23 +654,23 @@ export const MarketplacePage = () => {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              toggleWishlist(product.id);
+                              handleToggleWishlist(product);
                             }}
                             className="absolute top-3 left-3 z-10 w-8 h-8 rounded-full bg-slate-950/70 hover:bg-slate-900 border border-slate-700/60 flex items-center justify-center transition"
                           >
                             <m.div
                               animate={
-                                wishlist.has(product.id)
+                                isInWishlist(product.id)
                                   ? { scale: [0.8, 1.25, 1] }
                                   : { scale: 1 }
                               }
-                              transition={{ duration: 0.25 }}
+                              transition={{ duration: 0.25, ease: 'easeOut' }}
                             >
                               <Heart
-                                className={`w-4 h-4 ${
-                                  wishlist.has(product.id)
+                                className={`w-4 h-4 transition-colors duration-200 ${
+                                  isInWishlist(product.id)
                                     ? 'fill-rose-500 text-rose-500'
-                                    : 'text-slate-300'
+                                    : 'text-slate-300 hover:text-white'
                                 }`}
                               />
                             </m.div>

@@ -1,5 +1,5 @@
 // client/src/pages/DashboardPage.jsx
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Shield,
@@ -15,19 +15,27 @@ import {
   Package,
   Users,
   Star,
+  Heart,
+  Store,
 } from 'lucide-react';
 import { m } from 'framer-motion';
-import { useAuthStore } from '../store';
+import { useAuthStore, useWishlistStore } from '../store';
 import { authApi, resolveAssetUrl } from '../services/api';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 import { AnimatedCounter } from '../components/AnimatedCounter';
-import { tapFeedback } from '../lib/motion';
+import { tapFeedback, staggerContainer, staggerItem } from '../lib/motion';
 
 export const DashboardPage = () => {
   const { user, logout, logoutAll, setAuth, accessToken } = useAuthStore();
+  const { items: wishlistItems, toggle: toggleWishlist } = useWishlistStore();
   const [syncMessage, setSyncMessage] = useState('');
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'stats' | 'security'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'wishlist' | 'stats' | 'security'
+  const isWishlistFirstLoad = useRef(true);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    isWishlistFirstLoad.current = false;
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -53,6 +61,13 @@ export const DashboardPage = () => {
   };
 
   const avatarUrl = resolveAssetUrl(user?.profilePictureUrl);
+
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'wishlist', label: `Saved Wishlist (${wishlistItems.length})` },
+    { id: 'stats', label: 'Campus Activity' },
+    { id: 'security', label: 'Security & Tokens' },
+  ];
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-6">
@@ -138,27 +153,30 @@ export const DashboardPage = () => {
           </div>
         </div>
 
-        {/* Animated Tabs with layoutId pill */}
-        <div className="flex items-center gap-2 p-1 rounded-xl bg-slate-900/70 border border-slate-700/60 w-fit">
-          {[
-            { id: 'overview', label: 'Overview' },
-            { id: 'stats', label: 'Campus Activity' },
-            { id: 'security', label: 'Security & Tokens' },
-          ].map((tab) => (
+        {/* Animated Tabs with layoutId Sliding Underline */}
+        <div className="flex items-center gap-1 sm:gap-2 p-1.5 rounded-xl bg-slate-900/80 border border-slate-700/60 w-fit overflow-x-auto">
+          {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition ${
+              className={`relative px-4 py-2 text-xs font-semibold rounded-lg transition-colors duration-150 ${
                 activeTab === tab.id ? 'text-white' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               {activeTab === tab.id && (
-                <m.div
-                  layoutId="activeTab"
-                  className="absolute inset-0 bg-blue-600 rounded-lg shadow-sm"
-                  transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                />
+                <>
+                  <m.div
+                    layoutId="activeTabPill"
+                    className="absolute inset-0 bg-slate-800/90 rounded-lg shadow-sm"
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  />
+                  <m.div
+                    layoutId="activeTabUnderline"
+                    className="absolute bottom-0 inset-x-2 h-0.5 bg-blue-500 rounded-full z-20 shadow-sm shadow-blue-500/50"
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  />
+                </>
               )}
               <span className="relative z-10">{tab.label}</span>
             </button>
@@ -166,70 +184,227 @@ export const DashboardPage = () => {
         </div>
 
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Account & Verification
-              </span>
-              <p className="text-sm font-medium text-emerald-400 flex items-center gap-1.5">
-                <UserCheck className="w-4 h-4" />
-                {user?.isVerifiedStudent
-                  ? `Verified (${user?.collegeEmail})`
-                  : 'Active • Pending College Verification'}
-              </p>
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Account & Verification
+                </span>
+                <p className="text-sm font-medium text-emerald-400 flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4" />
+                  {user?.isVerifiedStudent
+                    ? `Verified (${user?.collegeEmail})`
+                    : 'Active • Pending College Verification'}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Authentication Method
+                </span>
+                <p className="text-sm font-medium text-slate-200">
+                  {user?.authProvider === 'GOOGLE'
+                    ? user?.hasPassword
+                      ? 'Google Sign-In + Email Password'
+                      : 'Google Sign-In (Password not set)'
+                    : 'Email & Password'}
+                </p>
+              </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Authentication Method
-              </span>
-              <p className="text-sm font-medium text-slate-200">
-                {user?.authProvider === 'GOOGLE'
-                  ? user?.hasPassword
-                    ? 'Google Sign-In + Email Password'
-                    : 'Google Sign-In (Password not set)'
-                  : 'Email & Password'}
-              </p>
+            {/* Overview Animated Counters */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-blue-400" /> Students
+                </span>
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter value={1420} duration={600} />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-emerald-400" /> Active Listings
+                </span>
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter value={84} duration={600} />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5 text-indigo-400" /> Trades
+                </span>
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter value={312} duration={600} />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5 text-amber-400" /> Rating
+                </span>
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter value={4.9} duration={600} suffix=" ★" />
+                </div>
+              </div>
             </div>
           </div>
         )}
 
+        {/* Wishlist Tab - Staggered fade-in on first load only */}
+        {activeTab === 'wishlist' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-1">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
+                Your Saved Listings ({wishlistItems.length})
+              </h2>
+              <Link
+                to="/marketplace"
+                className="text-xs text-blue-400 hover:text-blue-300 transition flex items-center gap-1"
+              >
+                <span>Browse Marketplace</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            {wishlistItems.length === 0 ? (
+              <div className="p-10 rounded-2xl bg-slate-900/60 border border-slate-700/50 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center mx-auto text-slate-500">
+                  <Heart className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-200">Your wishlist is empty</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  Tap the heart icon on any marketplace item to save it here for quick access later.
+                </p>
+                <Link
+                  to="/marketplace"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition"
+                >
+                  <Store className="w-3.5 h-3.5" />
+                  Explore Marketplace
+                </Link>
+              </div>
+            ) : (
+              <m.div
+                variants={isWishlistFirstLoad.current ? staggerContainer(0.04) : undefined}
+                initial="initial"
+                animate="animate"
+                className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"
+              >
+                {wishlistItems.map((item) => (
+                  <m.div
+                    key={item.id}
+                    variants={isWishlistFirstLoad.current ? staggerItem : undefined}
+                    className="bg-slate-900/70 border border-slate-700/60 rounded-xl overflow-hidden hover:border-blue-500/40 transition flex flex-col justify-between group shadow-md"
+                  >
+                    <div>
+                      <div className="relative aspect-[4/3] bg-slate-950 overflow-hidden">
+                        {item.primaryImage?.thumbUrl ? (
+                          <img
+                            src={item.primaryImage.thumbUrl}
+                            alt={item.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-600">
+                            <Package className="w-8 h-8" />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleWishlist(item)}
+                          aria-label="Remove from wishlist"
+                          className="absolute top-2 right-2 w-8 h-8 rounded-full bg-slate-950/80 hover:bg-slate-900 border border-slate-700 flex items-center justify-center transition"
+                        >
+                          <m.div
+                            animate={{ scale: [0.8, 1.25, 1] }}
+                            transition={{ duration: 0.25, ease: 'easeOut' }}
+                          >
+                            <Heart className="w-4 h-4 fill-rose-500 text-rose-500 transition-colors duration-200" />
+                          </m.div>
+                        </button>
+                      </div>
+
+                      <div className="p-3.5 space-y-1.5">
+                        <span className="text-[10px] font-medium text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                          {item.category?.name || 'Listing'}
+                        </span>
+                        <h3 className="text-xs font-bold text-white line-clamp-1 group-hover:text-blue-300 transition">
+                          {item.title}
+                        </h3>
+                        <p className="text-sm font-extrabold text-emerald-400">
+                          ₹{Number(item.price || 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400 truncate">
+                        {item.seller?.name || 'Student Seller'}
+                      </span>
+                      <Link
+                        to={`/products/${item.id}`}
+                        className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                      >
+                        View <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    </div>
+                  </m.div>
+                ))}
+              </m.div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'stats' && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
-              <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-blue-400" /> Students
-              </span>
-              <div className="text-2xl font-bold text-white">
-                <AnimatedCounter value={1420} duration={600} />
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-blue-400" /> Students
+                </span>
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter value={1420} duration={600} />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-emerald-400" /> Active Listings
+                </span>
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter value={84} duration={600} />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5 text-indigo-400" /> Trades
+                </span>
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter value={312} duration={600} />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5 text-amber-400" /> Rating
+                </span>
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter value={4.9} duration={600} suffix=" ★" />
+                </div>
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
-              <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-emerald-400" /> Active Listings
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 flex items-center justify-between">
+              <span className="text-xs text-slate-300">Wishlist Items Tracked</span>
+              <span className="text-sm font-bold text-rose-400 flex items-center gap-1">
+                <Heart className="w-3.5 h-3.5 fill-rose-500" />
+                <AnimatedCounter value={wishlistItems.length} duration={400} /> saved
               </span>
-              <div className="text-2xl font-bold text-white">
-                <AnimatedCounter value={84} duration={600} />
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
-              <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                <TrendingUp className="w-3.5 h-3.5 text-indigo-400" /> Trades
-              </span>
-              <div className="text-2xl font-bold text-white">
-                <AnimatedCounter value={312} duration={600} />
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/50 space-y-1">
-              <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                <Star className="w-3.5 h-3.5 text-amber-400" /> Rating
-              </span>
-              <div className="text-2xl font-bold text-white">
-                <AnimatedCounter value={4.9} duration={600} suffix=" ★" />
-              </div>
             </div>
           </div>
         )}
