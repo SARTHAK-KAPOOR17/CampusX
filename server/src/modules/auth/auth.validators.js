@@ -46,7 +46,32 @@ const loginValidation = [
     .withMessage('Password is required'),
 ];
 
+const googleAuthValidation = [
+  body('credential')
+    .trim()
+    .notEmpty()
+    .withMessage('Google credential ID token is required'),
+];
+
+const setPasswordValidation = [
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required')
+    .isLength({ min: 8, max: 128 })
+    .withMessage('Password must be at least 8 characters long')
+    .matches(/[A-Z]/)
+    .withMessage('Password must contain at least one uppercase letter')
+    .matches(/[a-z]/)
+    .withMessage('Password must contain at least one lowercase letter')
+    .matches(/[0-9]/)
+    .withMessage('Password must contain at least one number')
+    .matches(/[^A-Za-z0-9]/)
+    .withMessage('Password must contain at least one special character'),
+];
+
 module.exports = {
   signupValidation,
   loginValidation,
+  googleAuthValidation,
+  setPasswordValidation,
 };

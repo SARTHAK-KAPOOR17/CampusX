@@ -121,6 +121,49 @@ const me = asyncHandler(async (req, res) => {
   return successResponse(res, { user }, 'Authenticated user retrieved', 200);
 });
 
+const googleLogin = asyncHandler(async (req, res) => {
+  const { credential } = req.body;
+  const meta = getRequestMeta(req);
+
+  const result = await authService.googleAuth({
+    credential,
+    ...meta,
+  });
+
+  res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getCookieOptions());
+
+  return successResponse(
+    res,
+    {
+      user: result.user,
+      accessToken: result.accessToken,
+    },
+    'Google authentication successful',
+    200
+  );
+});
+
+const setPassword = asyncHandler(async (req, res) => {
+  const { password } = req.body;
+  await authService.setPassword({
+    userId: req.user.id,
+    password,
+  });
+
+  return successResponse(res, null, 'Password set successfully', 200);
+});
+
+const getAuthConfig = asyncHandler(async (req, res) => {
+  return successResponse(
+    res,
+    {
+      googleEnabled: Boolean(config.google.clientId),
+    },
+    'Auth configuration retrieved',
+    200
+  );
+});
+
 module.exports = {
   signup,
   login,
@@ -128,4 +171,7 @@ module.exports = {
   logout,
   logoutAll,
   me,
+  googleLogin,
+  setPassword,
+  getAuthConfig,
 };

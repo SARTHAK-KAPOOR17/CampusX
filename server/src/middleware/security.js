@@ -189,6 +189,16 @@ const setupSecurityMiddleware = (app) => {
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", 'https://accounts.google.com/gsi/client'],
+          frameSrc: ["'self'", 'https://accounts.google.com/gsi/', 'https://accounts.google.com/'],
+          connectSrc: ["'self'", 'https://accounts.google.com/gsi/'],
+          imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://accounts.google.com/gsi/style'],
+        },
+      },
     })
   );
   app.use(cors(corsOptions));

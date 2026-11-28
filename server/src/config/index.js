@@ -79,6 +79,10 @@ const config = {
     suggestTtlSeconds: parseInt(process.env.SUGGEST_CACHE_TTL_SECONDS || '60', 10),
     productDetailTtlSeconds: parseInt(process.env.PRODUCT_DETAIL_CACHE_TTL_SECONDS || '30', 10),
   },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    autoVerifyCollege: process.env.GOOGLE_AUTO_VERIFY_COLLEGE !== 'false',
+  },
 };
 
 module.exports = config;

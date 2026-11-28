@@ -2,8 +2,11 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const validator = require('validator');
+const { OAuth2Client } = require('google-auth-library');
 const config = require('../../config');
 const { prisma } = require('../../config/db');
+const cache = require('../../services/cache');
 const logger = require('../../utils/logger');
 const AppError = require('../../utils/AppError');
 const { formatUserWithAvatar } = require('../../utils/userFormatter');
@@ -12,6 +15,7 @@ const USER_PUBLIC_SELECT = {
   id: true,
   name: true,
   email: true,
+  passwordHash: true,
   role: true,
   isActive: true,
   collegeEmail: true,
@@ -24,6 +28,9 @@ const USER_PUBLIC_SELECT = {
   bio: true,
   ratingAverage: true,
   ratingCount: true,
+  googleId: true,
+  authProvider: true,
+  emailVerified: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -116,7 +123,7 @@ const login = async ({ email, password, userAgent = null, ip = null }) => {
     where: { email: normalizedEmail },
   });
 
-  if (!user) {
+  if (!user || !user.passwordHash) {
     throw new AppError('Invalid email or password.', 401);
   }
 
@@ -279,6 +286,186 @@ const getMe = async (userId) => {
   return formatUserWithAvatar(user);
 };
 
+let googleOAuthClient = null;
+const getGoogleOAuthClient = () => {
+  if (!googleOAuthClient) {
+    googleOAuthClient = new OAuth2Client(config.google.clientId);
+  }
+  return googleOAuthClient;
+};
+
+/**
+ * Authenticates or links a user via Google Identity Services ID token.
+ */
+const googleAuth = async ({ credential, userAgent = null, ip = null }) => {
+  if (!config.google.clientId) {
+    throw new AppError('Google authentication is not configured on this server.', 503);
+  }
+
+  if (!credential) {
+    throw new AppError('Google credential is required.', 400);
+  }
+
+  let payload;
+  try {
+    const client = getGoogleOAuthClient();
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: config.google.clientId,
+    });
+    payload = ticket.getPayload();
+  } catch (err) {
+    logger.warn({ err: err.message }, 'Google verifyIdToken failed');
+    throw new AppError('Invalid or expired Google credential.', 401);
+  }
+
+  if (!payload || !payload.email) {
+    throw new AppError('Invalid Google credential payload.', 401);
+  }
+
+  if (payload.email_verified !== true) {
+    throw new AppError('Google email is not verified.', 401);
+  }
+
+  const normalizedEmail = validator.normalizeEmail(payload.email) || payload.email.trim().toLowerCase();
+  const googleId = payload.sub;
+
+  let user = await prisma.user.findUnique({
+    where: { googleId },
+  });
+
+  if (user) {
+    if (!user.isActive) {
+      throw new AppError('Account is deactivated. Please contact an administrator.', 403);
+    }
+  } else {
+    // Check if an existing account with that email already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (existingUser) {
+      if (!existingUser.isActive) {
+        throw new AppError('Account is deactivated. Please contact an administrator.', 403);
+      }
+
+      // Security rule: if emailVerified is false, mitigate pre-registration takeover
+      if (!existingUser.emailVerified) {
+        logger.warn(
+          { userId: existingUser.id, email: normalizedEmail },
+          'Google account linking: securing unverified local account by clearing passwordHash and revoking active refresh tokens'
+        );
+
+        const [updatedUser] = await prisma.$transaction([
+          prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              googleId,
+              emailVerified: true,
+              passwordHash: null,
+            },
+          }),
+          prisma.refreshToken.updateMany({
+            where: {
+              userId: existingUser.id,
+              revokedAt: null,
+            },
+            data: {
+              revokedAt: new Date(),
+            },
+          }),
+        ]);
+        user = updatedUser;
+      } else {
+        // Existing user is already email verified: simply link googleId
+        user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            googleId,
+          },
+        });
+      }
+    } else {
+      // Create new Google user
+      user = await prisma.user.create({
+        data: {
+          name: (payload.name && payload.name.trim()) || normalizedEmail.split('@')[0],
+          email: normalizedEmail,
+          googleId,
+          authProvider: 'GOOGLE',
+          passwordHash: null,
+          emailVerified: true,
+          role: 'STUDENT',
+        },
+      });
+    }
+  }
+
+  // Auto-verification for college emails
+  const rawHd = payload.hd ? payload.hd.trim().toLowerCase() : null;
+  const isCollegeDomain = rawHd && config.verification.allowedDomains.includes(rawHd);
+  const emailMatchesCollegeDomain = isCollegeDomain && normalizedEmail.endsWith(`@${rawHd}`);
+
+  if (config.google.autoVerifyCollege && isCollegeDomain && emailMatchesCollegeDomain) {
+    if (!user.isVerifiedStudent) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          isVerifiedStudent: true,
+          collegeEmail: normalizedEmail,
+          verifiedAt: new Date(),
+        },
+      });
+    }
+    await cache.del(`auth:user:${user.id}`);
+  }
+
+  const accessToken = generateAccessToken(user);
+  const rawRefreshToken = generateRefreshToken();
+
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(rawRefreshToken),
+      expiresAt: getRefreshExpiryDate(),
+      userAgent,
+      ip,
+    },
+  });
+
+  return {
+    user: await formatUserWithAvatar(user),
+    accessToken,
+    refreshToken: rawRefreshToken,
+  };
+};
+
+/**
+ * Sets or updates password for an authenticated user.
+ */
+const setPassword = async ({ userId, password }) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new AppError('User not found.', 404);
+  }
+
+  const passwordHash = await bcrypt.hash(password, config.bcryptRounds);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash,
+    },
+  });
+
+  await cache.del(`auth:user:${userId}`);
+
+  return { message: 'Password set successfully.' };
+};
+
 module.exports = {
   signup,
   login,
@@ -286,6 +473,8 @@ module.exports = {
   logout,
   logoutAll,
   getMe,
+  googleAuth,
+  setPassword,
   hashToken,
   USER_PUBLIC_SELECT,
 };

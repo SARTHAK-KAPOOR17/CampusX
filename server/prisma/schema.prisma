@@ -15,6 +15,11 @@ enum Role {
   ADMIN
 }
 
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
 enum Condition {
   NEW
   LIKE_NEW
@@ -36,7 +41,10 @@ model User {
   id                String         @id @default(uuid())
   name              String
   email             String         @unique
-  passwordHash      String
+  passwordHash      String?
+  googleId          String?        @unique
+  authProvider      AuthProvider   @default(LOCAL)
+  emailVerified     Boolean        @default(false)
   role              Role           @default(STUDENT)
   isActive          Boolean        @default(true)
   collegeEmail      String?        @unique
