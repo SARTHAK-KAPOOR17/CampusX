@@ -27,7 +27,8 @@
 | **Day 3** | **Student Verification & User Profiles** | ✅ Done | College email domain whitelist + 6-digit SHA-256 OTP verification (`Nodemailer` / dev console), `requireVerifiedStudent` middleware, profile CRUD with bio XSS sanitization, avatar upload (`multer` + magic-byte validation), public profile endpoint, verified badge UI. |
 | **Day 4** | **Marketplace Core: Listings, Categories, Conditions & Lifecycle** | ✅ Done | `Category` & `Product` Prisma models + idempotent category seed, Draft/Publish workflow (`requireVerifiedStudent`), central lifecycle state machine (`DRAFT`, `ACTIVE`, `RESERVED`, `SOLD`, `EXPIRED`, `UNDER_REVIEW`), soft-delete, view counting, moderator review hook, hourly expiry cron (`node-cron`), and Marketplace/Sell/Detail/My Listings UI. |
 | **Day 5** | **Product Images & Cloud Storage (+ Day 5B Verification Restriction)** | ✅ Done | S3-compatible storage abstraction (`MinIO` / AWS S3 / R2), `sharp` optimization pipeline (magic bytes, EXIF/GPS strip, 3 WebP variants + blur placeholder), `ProductImage` & `avatarKey` migration, presigned/CDN URLs, multi-image uploader, gallery & lightbox UI, and `@chitkara.edu.in` strict student email enforcement. |
-| **Day 6** | **Search Engine, Filters, Sorting & Redis Caching** | 🚧 In Progress | PostgreSQL `tsvector` (`A`/`B`/`C`) + `pg_trgm` GIN search & typo fallback, multi-facet filters, stable `id` tie-broken sorting, Redis (`ioredis`) fail-open cache (`SCAN`, stampede lock, versioned invalidation), Redis-backed rate limiting, 60s auth cache with immediate invalidation, autocomplete & `search:popular` tracking, responsive Client search/filter UI. |
+| **Day 6** | **Search Engine, Filters, Sorting & Redis Caching** | ✅ Done | PostgreSQL `tsvector` (`A`/`B`/`C`) + `pg_trgm` GIN search & typo fallback, multi-facet filters, stable `id` tie-broken sorting, Redis (`ioredis`) fail-open cache (`SCAN`, stampede lock, versioned invalidation), Redis-backed rate limiting, 60s auth cache with immediate invalidation, autocomplete & `search:popular` tracking, responsive Client search/filter UI. |
+| **Day 7B** | **Google Sign-In & UI Animation System** | 🚧 In Progress | Google Identity Services ID-token auth, account linking security (password nulling & token revocation for unverified accounts), `@chitkara.edu.in` auto-student verification, Framer Motion (`LazyMotion` + `domAnimation`), route transitions, staggered grid, card hover lift, tab `layoutId`, modal springs, count-up stats, `prefers-reduced-motion`. |
 | **Day 7** | **AI Service: Auto-Categorization & Tagging** | ⏳ Planned | FastAPI text processing, zero-shot/embedding-based category prediction, auto-tagging of item condition and academic course codes. |
 | **Day 8** | **AI Service: Price Recommendation Engine** | ⏳ Planned | Pricing algorithms analyzing historical campus transactions, MSRP depreciation models, fair-market price badges. |
 | **Day 9** | **Real-Time Buyer-Seller Messaging** | ⏳ Planned | WebSocket / Socket.io architecture, instant direct messaging, chat history persistence, unread badge counts. |
@@ -395,6 +396,117 @@ Additional search endpoints:
 - **PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` Plan Confirmation**:
   - `Bitmap Index Scan on "products_searchVector_gin_idx"` (`shared hit=5`, **Execution Time: `0.405 ms`** after `VACUUM ANALYZE`)
   - Trigram typo index `"products_title_trgm_gin_idx"` (`gin_trgm_ops`) confirmed via `Bitmap Index Scan` on `<%` operator.
+
+---
+
+## 🔑 Google Sign-In Architecture
+
+CampusX integrates Google Identity Services (GIS) using the ID-token authentication flow. The client renders Google's official sign-in button, obtains a cryptographically signed ID token JWT directly from Google, and submits it to `/api/auth/google`. The server validates the token using Google's public keys via `google-auth-library`.
+
+### Google Authentication Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Client as React Client (GIS)
+    participant Google as Google Identity Services
+    participant Server as Express Server
+    participant DB as PostgreSQL (Prisma)
+    participant Redis as Redis Cache
+
+    User->>Client: Clicks "Continue with Google"
+    Client->>Google: Authenticates via GIS popup/One-Tap
+    Google-->>Client: Returns ID Token (JWT Credential)
+    Client->>Server: POST /api/auth/google { credential }
+    Server->>Google: Verifies token signature & audience (OAuth2Client)
+    Google-->>Server: Token payload (sub, email, email_verified, hd, name, picture)
+    alt email_verified == false
+        Server-->>Client: 401 Unauthorized ("Google email is not verified")
+    else User exists with googleId
+        Server->>DB: Fetch user & update last login
+    else User exists with email (Account Linking)
+        alt existing user emailVerified == false
+            Server->>DB: Set googleId, emailVerified=true, passwordHash=null, revoke all refresh tokens
+            Note over Server,DB: Mitigates pre-registration takeover: nulls password & revokes tokens
+        else existing user emailVerified == true
+            Server->>DB: Link googleId
+        end
+    else New User
+        Server->>DB: Create user (role=STUDENT, authProvider=GOOGLE, passwordHash=null)
+    end
+    opt GOOGLE_AUTO_VERIFY_COLLEGE == true && hd == "chitkara.edu.in"
+        Server->>DB: Mark isVerifiedStudent=true, collegeEmail=email, verifiedAt=now
+        Server->>Redis: Invalidate auth:user:{userId}
+    end
+    Server->>DB: Store rotated RefreshToken
+    Server-->>Client: 200 OK + JWT Access Token & Set-Cookie (refreshToken httpOnly)
+    Client->>Client: Store accessToken in memory & update state
+```
+
+### Environment Variables for Google OAuth
+| Variable | Service | Default | Description |
+|:---|:---|:---|:---|
+| `GOOGLE_CLIENT_ID` | Server | `""` | Google Cloud Console OAuth 2.0 Client ID |
+| `GOOGLE_AUTO_VERIFY_COLLEGE` | Server | `true` | When true, matches `@chitkara.edu.in` via token `hd` claim to auto-verify student |
+| `VITE_GOOGLE_CLIENT_ID` | Client | `""` | Passed to Vite client (via Docker build arg or `.env`) to initialize GIS button |
+
+### Creating Google OAuth Client ID in Google Cloud Console
+1. Open [Google Cloud Console Credentials](https://console.cloud.google.com/apis/credentials).
+2. Create or select your project (e.g. `CampusX`).
+3. Configure the **OAuth Consent Screen**:
+   - User Type: **External**.
+   - App Name: `CampusX`.
+   - User Support Email: your developer email.
+   - Authorized Domains: add `chitkara.edu.in` (and your production domain if deploying).
+4. Go to **Credentials** -> **Create Credentials** -> **OAuth Client ID**:
+   - Application Type: **Web Application**.
+   - Name: `CampusX Web Client`.
+   - **Authorized JavaScript origins**:
+     - `http://localhost:5173` (Vite dev server)
+     - `http://localhost:4173` (Vite preview server)
+     - `http://localhost` (Docker / Production port 80)
+   - **Authorized redirect URIs**: (None required for Google Identity Services ID-token button flow).
+5. Copy the generated **Client ID** (ending in `.apps.googleusercontent.com`).
+6. Paste into your `.env` and `server/.env` files under `GOOGLE_CLIENT_ID`, and in `client/.env` under `VITE_GOOGLE_CLIENT_ID`.
+
+### Google Auth Endpoints
+
+| Method | Endpoint | Auth | Rate Limit | Description |
+|:---|:---|:---:|:---:|:---|
+| `GET` | `/api/auth/config` | Public | None | Returns `{ googleEnabled: boolean }` so client conditionally renders GIS |
+| `POST` | `/api/auth/google` | Public | `authLimiter` (10/15m) | Verifies ID token credential, links or creates user, issues JWT + cookie |
+| `POST` | `/api/auth/set-password` | Bearer Token | Standard | Allows Google-authenticated users without password to create an email password |
+| `GET` | `/api/auth/me` | Bearer Token | Standard | Current user profile, includes `authProvider` and `hasPassword` boolean |
+
+---
+
+## 🎨 UI Animation Guidelines
+
+CampusX utilizes `framer-motion` for fluid, professional micro-interactions while maintaining strict performance budgets.
+
+### Performance & Accessibility Rules
+- **Bundle Optimization**: Imported via `LazyMotion` with `domAnimation` features, adding `< 25KB` gzipped to production bundles.
+- **Accessibility**: Application is wrapped in `<MotionConfig reducedMotion="user">`, automatically disabling motion transitions when `prefers-reduced-motion: reduce` is enabled in OS settings.
+- **Hardware Acceleration**: Only `transform` (`x`, `y`, `scale`) and `opacity` are animated to ensure 60fps execution on mobile/low-power devices. Layout properties (`width`, `height`, `margin`, `padding`) are strictly forbidden.
+- **Duration Limits**:
+  - Micro-interactions (hover, tap): `150ms`
+  - Standard transitions (drawers, reveals): `200ms`
+  - Complex transitions (page, modals): `250ms–300ms` (never exceeds `300ms`).
+- **Spring Parameters**: Standardized spring configuration for overlays/drawers: `{ type: 'spring', damping: 25, stiffness: 300 }`.
+- **Easing Curve**: Standard cubic-bezier ease for transitions: `[0.25, 0.1, 0.25, 1]`.
+- **Battery Preservation**: No infinite decorative loop animations. Skeletons utilize CSS keyframe shimmers rather than JS animation loops.
+
+### Animated Interactions
+1. **Route Transitions**: Page changes feature smooth fade + `8px` vertical translation wrapped in `AnimatePresence mode="wait"`.
+2. **Marketplace Grid**: Product listings enter with a clean `40ms` stagger (capped at top 12 items to prevent frame drops).
+3. **Product Card Hover**: Subtle `-4px` vertical elevation lift, soft shadow deepening, and `1.03` image zoom scale.
+4. **Interactive Tap**: Button click feedback with `whileTap={{ scale: 0.98 }}`.
+5. **Wishlist Pop**: Heart button toggle triggers elastic keyframe bounce (`0.8 -> 1.2 -> 1.0`).
+6. **Modals & Drawers**: Backdrop fade with spring-driven scale/slide-in entrance.
+7. **Tabs Indicator**: Active tab pill transitions smoothly between tabs using Framer Motion `layoutId="activeTab"`.
+8. **Dashboard Counters**: Numerical metrics count up smoothly on viewport entry over `600ms`.
+9. **Form Feedback**: Validation error messages slide down and fade in with zero layout jank.
 
 ---
 
